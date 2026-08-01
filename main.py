@@ -1,43 +1,48 @@
 import os
 import requests
-from datetime import datetime
 
-def send_kakao_memo():
-    kakao_token = os.environ.get('KAKAO_TOKEN')
-    
-    if not kakao_token:
-        print("카카오 토큰이 설정되지 않았습니다.")
+# GitHub Secrets에서 가져온 리프레시 토큰
+REFRESH_TOKEN = os.environ.get("KAKAO_TOKEN")
+REST_API_KEY = "3c9a29d58ca8030c4e9a119d4249e305"  # 본인의 REST API 키
+
+def get_new_access_token(refresh_token):
+    """리프레시 토큰을 사용해 새로운 액세스 토큰을 발급받는 함수"""
+    url = "https://kauth.kakao.com/oauth/token"
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": REST_API_KEY,
+        "refresh_token": refresh_token
+    }
+    response = requests.post(url, data=data)
+    tokens = response.json()
+    return tokens.get("access_token")
+
+def send_kakao_message(text):
+    """카카오톡 '나에게 보내기' API를 호출하는 함수"""
+    # 1. 최신 액세스 토큰 갱신
+    access_token = get_new_access_token(REFRESH_TOKEN)
+    if not access_token:
+        print("토큰 갱신 실패: 리프레시 토큰이 만료되었거나 잘못되었습니다.")
         return
 
-    now = datetime.now()
-    current_time_str = now.strftime("%Y-%m-%d %H:%M")
-    
-    if now.weekday() >= 5:
-        title = "🏖️ [주말 및 공휴일 전일 마감 증시 이슈 리포트]\n\n"
-        body = "• 주말 글로벌 주요 경제 뉴스 및 주간 증시 리뷰를 안내해 드립니다.\n• 다가오는 주의 주요 경제 일정과 주도주 동향을 점검하세요."
-    else:
-        title = "🚨 [한국 및 미국 주식 브리핑 알림]\n\n"
-        body = f"• 기준 시간: {current_time_str}\n• 실시간 미국 주요 주도주 및 국내 증시 핵심 동향 브리핑이 성공적으로 완료되었습니다."
-
-    full_message = title + body
-
+    # 2. 메시지 전송 요청
+    header = {"Authorization": f"Bearer {access_token}"}
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
-    headers = {
-        "Authorization": f"Bearer {kakao_token}"
-    }
+    
+    # 전송할 메시지 내용 (주식 브리핑 내용 작성)
     data = {
-        "template_object": {
-            "object_type": "text",
-            "text": full_message,
-            "link": {
-                "web_url": "https://developers.kakao.com",
-                "mobile_web_url": "https://developers.kakao.com"
-            }
+        "object_type": "text",
+        "text": text,
+        "link": {
+            "web_url": "https://developers.kakao.com",
+            "mobile_web_url": "https://developers.kakao.com"
         }
     }
-
-    response = requests.post(url, headers=headers, data=data)
-    print("카카오톡 전송 결과:", response.status_code, response.text)
+    
+    response = requests.post(url, headers=header, data={"template_object": str(data).replace("'", '"')})
+    print(f"카카오톡 전송 결과: {response.status_code} {response.text}")
 
 if __name__ == "__main__":
-    send_kakao_memo()
+    # 테스트 메시지 전송
+    message = "📈 [주식 브리핑 자동화 테스트]\n\n리프레시 토큰 자동 갱신 연동이 성공적으로 완료되었습니다!"
+    send_kakao_message(message)
