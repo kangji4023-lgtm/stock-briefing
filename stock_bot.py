@@ -54,7 +54,7 @@ def send_kakao_message(text):
     """카카오톡 나에게 보내기 API를 통해 메시지 전송"""
     access_token = refresh_access_token(REST_API_KEY, REFRESH_TOKEN)
     if not access_token:
-        print("액세스 토큰 갱신 실패")
+        print("엑세스 토큰 갱신 실패")
         return
 
     header = {"Authorization": f"Bearer {access_token}"}
@@ -84,6 +84,6 @@ if __name__ == "__main__":
 
 💡 시장 특징 및 뉴스 핵심 요약 완료
 """
-    # 실제 카카오톡 전송을 원하시면 아래 주석(#)을 해제하세요.
-    # send_kakao_message(message)
+    # 실제 카카오톡 전송을 위해 주석을 해제 상태로 반영하세요.
+    send_kakao_message(message)
     print(message)
