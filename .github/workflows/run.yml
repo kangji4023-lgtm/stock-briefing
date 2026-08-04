@@ -26,20 +26,24 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # stock-briefing 폴더가 존재하면 그 안의 requirements.txt 설치
-          if [ -f "stock-briefing/requirements.txt" ]; then
-            pip install -r stock-briefing/requirements.txt
-          elif [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt
-          fi
+          # 현재 폴더나 하위 폴더에 requirements.txt가 있으면 설치
+          find . -name "requirements.txt" -exec pip install -r {} \;
 
       - name: Run stock briefing script
         run: |
-          # stock-briefing 폴더 안으로 이동해서 main.py 실행 (폴더가 있는 경우)
-          if [ -d "stock-briefing" ]; then
-            cd stock-briefing
+          # 현재 디렉토리 구조 출력 (디버깅용)
+          echo "=== Current Directory Contents ==="
+          ls -R
+          
+          # 파일 구조에 상관없이 시스템 전체에서 main.py를 찾아 바로 실행
+          MAIN_PATH=$(find . -name "main.py" | head -n 1)
+          
+          if [ -z "$MAIN_PATH" ]; then
+            echo "Error: main.py not found anywhere!"
+            exit 1
           fi
           
-          python main.py
+          echo "Found main.py at: $MAIN_PATH"
+          python "$MAIN_PATH"
         env:
           TZ: Asia/Seoul
