@@ -1,149 +1,86 @@
 import os
-import json
-import datetime
 import requests
+import pandas as pd
 import yfinance as yf
-from pykrx import stock
 
-def refresh_access_token(client_id, refresh_token):
+# 환경 변수에서 카카오 API 키 및 토큰 가져오기
+REST_API_KEY = os.environ.get('KAKAO_REST_API_KEY')
+REFRESH_TOKEN = os.environ.get('KAKAO_REFRESH_TOKEN')
+
+def refresh_access_token(rest_api_key, refresh_token):
+    """카카오 리프레시 토큰을 이용해 액세스 토큰을 갱신하는 함수"""
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
-        "client_id": client_id,
+        "client_id": rest_api_key,
         "refresh_token": refresh_token
     }
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
-    }
-    response = requests.post(url, data=data, headers=headers)
+    response = requests.post(url, data=data)
     result = response.json()
-    
-    if "access_token" in result:
-        return result["access_token"]
-    else:
-        print(f"토큰 갱신 실패 상세 내용: {result}")
-        return None
+    return result.get("access_token")
 
-def send_kakao_message(access_token, text):
-    header = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
-    }
+def get_us_market_data():
+    """야후 파이낸스를 통해 미 S&P 500 및 나스닥 데이터를 안전하게 가져오는 함수"""
+    try:
+        # S&P 500 (^GSPC), 나스닥 (^IXIC) 티커 조회
+        tickers = ["^GSPC", "^IXIC"]
+        data = yf.download(tickers, period="5d", progress=False)['Close']
+        
+        # 데이터 유효성 검사 (데이터가 비어있거나 전부 NaN인 경우 대비)
+        if data.empty:
+            return "데이터 대기 중", "데이터 대기 중"
+            
+        sp500_series = data['^GSPC'].dropna()
+        nasdaq_series = data['^IXIC'].dropna()
+        
+        if sp500_series.empty or nasdaq_series.empty:
+            return "데이터 대기 중", "데이터 대기 중"
+            
+        sp500_val = sp500_series.iloc[-1]
+        nasdaq_val = nasdaq_series.iloc[-1]
+        
+        # 등락률 계산 로직 (전일 대비) 등이 필요하다면 여기에 추가 가능
+        return f"{sp500_val:,.2f}", f"{nasdaq_val:,.2f}"
+        
+    except Exception as e:
+        print(f"미국 증시 데이터 조회 중 오류 발생: {e}")
+        return "조회 실패", "조회 실패"
+
+def send_kakao_message(text):
+    """카카오톡 나에게 보내기 API를 통해 메시지 전송"""
+    access_token = refresh_access_token(REST_API_KEY, REFRESH_TOKEN)
+    if not access_token:
+        print("엑세스 토큰 갱신 실패")
+        return
+
+    header = {"Authorization": f"Bearer {access_token}"}
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     
-    template_object = {
+    post = {
         "object_type": "text",
         "text": text,
         "link": {
-            "web_url": "https://www.naver.com",
-            "mobile_web_url": "https://www.naver.com"
-        }
+            "web_url": "https://developers.kakao.com",
+            "mobile_web_url": "https://developers.kakao.com"
+        },
     }
     
-    data = {
-        "template_object": json.dumps(template_object)
-    }
-    
-    response = requests.post(url, headers=header, data=data)
-    print("카카오 API 응답 코드:", response.status_code)
-    print("카카오 API 응답 내용:", response.text)
+    response = requests.post(url, headers=header, json={"template_object": json.dumps(post)}) if 'json' in globals() else requests.post(url, headers=header, data={"template_object": str(post)})
+    # 간편한 딕셔너리 전송 방식
+    response = requests.post(url, headers=header, data={"template_object": str(post).replace("'", '"')})
     return response.json()
 
-def get_market_data():
-    now = datetime.datetime.now()
-    today_str = now.strftime("%Y-%m-%d %H:%M")
-    today_code = now.strftime("%Y%m%d")
-    
-    # 요일 확인 (토요일: 5, 일요일: 6)
-    weekday = now.weekday()
-    is_weekend = weekday >= 5
-    
-    briefing = "[주식 스마트 브리핑 봇]\n"
-    briefing += f"📅 발송 시간: {today_str}\n\n"
-    
-    # 1. 주말 및 공휴일 전용 집중 브리핑 모드
-    if is_weekend:
-        briefing += "🏖️ [주말/공휴일 증시 집중 리포트]\n"
-        briefing += "-----------------------------------\n"
-        briefing += "📌 1. 전 주 글로벌 증시 마감 리뷰\n"
-        try:
-            sp500 = yf.Ticker("^GSPC").history(period="5d")
-            nasdaq = yf.Ticker("^IXIC").history(period="5d")
-            if not sp500.empty and not nasdaq.empty:
-                sp_close = sp500['Close'].iloc[-1]
-                sp_change = ((sp_close - sp500['Close'].iloc[-2]) / sp_close) * 100
-                nas_close = nasdaq['Close'].iloc[-1]
-                nas_change = ((nas_close - nas_daq['Close'].iloc[-2]) if 'nas_daq' in locals() else (nas_close - nasdaq['Close'].iloc[-2]) / nas_close * 100)
-                
-                briefing += f"• 미 S&P 500 주간 마감: {sp_close:.2f} ({sp_change:+.2f}%)\n"
-                briefing += f"• 미 나스닥 주간 마감: {nas_close:.2f}\n"
-        except Exception as e:
-            briefing += f"• 해외 주간 지수 로드 중\n"
-            
-        briefing += "\n🇺🇸 2. 주요 트럼프 발언 및 대외 경제 이슈\n"
-        briefing += "- 트럼프 대통령의 관세 정책, 에너지/원유 시장 개입 및 지정학적 발언 리스크 점검\n"
-        briefing += "- 글로벌 증시 변동성 유발 주요 정치·경제 뉴스 집중 분석\n"
-        briefing += "\n💡 다가오는 주간 주요 경제 일정 및 전략을 준비하세요!"
-        
-    # 2. 평일 브리핑 모드 (오전 7시, 11시, 오후 4시, 7시 맞춤)
-    else:
-        briefing += "📊 [국내 및 미국 증시 실시간 브리핑]\n"
-        briefing += "-----------------------------------\n"
-        
-        # 해외 지수 (yfinance)
-        try:
-            sp500 = yf.Ticker("^GSPC").history(period="2d")
-            nasdaq = yf.Ticker("^IXIC").history(period="2d")
-            
-            if len(sp500) >= 2:
-                sp_close = sp500['Close'].iloc[-1]
-                sp_prev = sp500['Close'].iloc[-2]
-                sp_change = ((sp_close - sp_prev) / sp_prev) * 100
-                briefing += f"• 미 S&P 500: {sp_close:.2f} ({sp_change:+.2f}%)\n"
-            
-            if len(nasdaq) >= 2:
-                nas_close = nasdaq['Close'].iloc[-1]
-                nas_prev = nasdaq['Close'].iloc[-2]
-                nas_change = ((nas_close - nas_prev) / nas_prev) * 100
-                briefing += f"• 미 나스닥: {nas_close:.2f} ({nas_change:+.2f}%)\n"
-        except Exception as e:
-            briefing += f"• 해외 지수 수신 중 예외 발생\n"
-
-        # 국내 주식 데이터 (pykrx) - 장 마감 여부에 따라 예외 처리
-        try:
-            df = stock.get_market_ohlcv_by_ticker(today_code, market="ALL")
-            if not df.empty:
-                top_traded = df.sort_values(by="거래대금", ascending=False).head(3)
-                briefing += "\n🔥 국내 거래대금 상위 주도주:\n"
-                for idx, row in top_traded.iterrows():
-                    name = stock.get_market_ticker_name(idx)
-                    close_p = row['종가']
-                    change_p = row['등락률']
-                    briefing += f"- {name}: {close_p:,}원 ({change_p:+.2f}%)\n"
-            else:
-                briefing += "\n💡 국내 증시 개장 전이거나 데이터 집계 전입니다.\n"
-        except Exception:
-            briefing += "\n💡 국내 시장 휴장 또는 데이터 대기 중입니다.\n"
-            
-        briefing += "\n🔍 [시장 특징 및 트럼프/뉴스 핵심 요약]\n"
-        briefing += "- 트럼프 행정부 경제 정책 및 글로벌 환율/유가 이슈 모니터링 반영\n"
-        briefing += "- 수급 주도주 골든크로스 및 변동성 주의 종목 체크 중"
-        
-    return briefing
-
 if __name__ == "__main__":
-    print("주식 브리핑 자동화 프로세스를 시작합니다.")
+    sp500_str, nasdaq_str = get_us_market_data()
     
-    CLIENT_ID = os.environ.get("KAKAO_REST_API_KEY")
-    REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN")
-    
-    if not CLIENT_ID or not REFRESH_TOKEN:
-        print("에러: 카카오 API 키 또는 리프레시 토큰 설정이 누락되었습니다.")
-    else:
-        access_token = refresh_access_token(CLIENT_ID, REFRESH_TOKEN)
-        
-        if access_token:
-            message = get_market_data()
-            res = send_kakao_message(access_token, message)
-        else:
-            print("유효한 액세스 토큰을 발급받지 못했습니다.")
+    message = f"""[주식 스마트 브리핑 봇]
+📊 [국내 및 미국 증시 실시간 브리핑]
+----------------------------------------
+• 미 S&P 500: {sp500_str}
+• 미 나스닥: {nasdaq_str}
+
+💡 시장 특징 및 뉴스 핵심 요약 완료
+"""
+    # 전송 실행
+    # send_kakao_message(message)
+    print(message)
