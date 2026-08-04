@@ -26,12 +26,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # requirements.txt가 있으면 설치하고, 없거나 부족하면 필수 라이브러리 강제 설치
-          if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt
-          fi
-          # 주식 봇 구동에 일반적으로 필요한 라이브러리 안전장치 설치
-          pip install numpy pandas requests pytz
+          # 주식 봇 구동에 필요한 모든 필수 라이브러리(yfinance 포함) 강제 설치
+          pip install numpy pandas requests pytz yfinance
           
       - name: Run stock briefing script
         run: |
