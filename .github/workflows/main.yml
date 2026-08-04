@@ -3,7 +3,7 @@ name: Stock Briefing Automation
 on:
   schedule:
     - cron: '30 23 * * *'
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,8 +21,8 @@ jobs:
         run: |
           pip install requests beautifulsoup4
 
-          - name: Run script
+      - name: Run script
         env:
-          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_REST_API_KEY }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
         run: python stock_bot.py
