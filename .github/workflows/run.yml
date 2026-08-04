@@ -11,7 +11,6 @@ jobs:
   run-bot:
     runs-on: ubuntu-latest
     
-    # 서버 전역 시간대를 대한민국(KST)으로 고정
     env:
       TZ: Asia/Seoul
 
@@ -27,18 +26,20 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; elif [ -f stock-briefing/requirements.txt ]; then pip install -r stock-briefing/requirements.txt; fi
+          # stock-briefing 폴더가 존재하면 그 안의 requirements.txt 설치
+          if [ -f "stock-briefing/requirements.txt" ]; then
+            pip install -r stock-briefing/requirements.txt
+          elif [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          fi
 
       - name: Run stock briefing script
         run: |
-          # 폴더 구조에 맞게 자동으로 파일을 찾아 실행하도록 경로 조정
-          if [ -f "main.py" ]; then
-            python main.py
-          elif [ -f "stock-briefing/main.py" ]; then
-            python stock-briefing/main.py
-          else
-            echo "Error: main.py not found!"
-            exit 1
+          # stock-briefing 폴더 안으로 이동해서 main.py 실행 (폴더가 있는 경우)
+          if [ -d "stock-briefing" ]; then
+            cd stock-briefing
           fi
+          
+          python main.py
         env:
           TZ: Asia/Seoul
