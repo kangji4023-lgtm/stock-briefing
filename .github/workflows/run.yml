@@ -27,8 +27,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install requests pykrx yfinance pandas numpy
+          python -m pip install --upgrade pip
+          pip install --upgrade requests yfinance pykrx pandas numpy
 
       - name: Run script
         env:
