@@ -2,7 +2,7 @@ name: Stock Briefing Bot
 
 on:
   schedule:
-    # 한국 시간 기준: 오전 7시(22:00 UTC), 오전 11시(02:00 UTC), 오후 4시(07:00 UTC), 오후 7시(10:00 UTC)
+    # 한국 시간(KST) 기준: 오전 7시(22:00 UTC), 오전 11시(02:00 UTC), 오후 4시(07:00 UTC), 오후 7시(10:00 UTC)
     - cron: '0 22,2,7,10 * * *'
   workflow_dispatch: # 수동으로도 실행할 수 있도록 설정
 
