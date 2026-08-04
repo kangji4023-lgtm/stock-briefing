@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 import pandas as pd
 import yfinance as yf
@@ -22,16 +23,20 @@ def refresh_access_token(rest_api_key, refresh_token):
 def get_us_market_data():
     """야후 파이낸스를 통해 미 S&P 500 및 나스닥 데이터를 안전하게 가져오는 함수"""
     try:
-        # S&P 500 (^GSPC), 나스닥 (^IXIC) 티커 조회
         tickers = ["^GSPC", "^IXIC"]
-        data = yf.download(tickers, period="5d", progress=False)['Close']
+        df = yf.download(tickers, period="5d", progress=False)
         
-        # 데이터 유효성 검사 (데이터가 비어있거나 전부 NaN인 경우 대비)
-        if data.empty:
+        if df.empty:
             return "데이터 대기 중", "데이터 대기 중"
             
-        sp500_series = data['^GSPC'].dropna()
-        nasdaq_series = data['^IXIC'].dropna()
+        # 다중 인덱스 구조 대응 및 데이터 추출
+        if 'Close' in df:
+            close_data = df['Close']
+        else:
+            close_data = df
+            
+        sp500_series = close_data['^GSPC'].dropna() if '^GSPC' in close_data else pd.Series()
+        nasdaq_series = close_data['^IXIC'].dropna() if '^IXIC' in close_data else pd.Series()
         
         if sp500_series.empty or nasdaq_series.empty:
             return "데이터 대기 중", "데이터 대기 중"
@@ -39,7 +44,6 @@ def get_us_market_data():
         sp500_val = sp500_series.iloc[-1]
         nasdaq_val = nasdaq_series.iloc[-1]
         
-        # 등락률 계산 로직 (전일 대비) 등이 필요하다면 여기에 추가 가능
         return f"{sp500_val:,.2f}", f"{nasdaq_val:,.2f}"
         
     except Exception as e:
@@ -50,7 +54,7 @@ def send_kakao_message(text):
     """카카오톡 나에게 보내기 API를 통해 메시지 전송"""
     access_token = refresh_access_token(REST_API_KEY, REFRESH_TOKEN)
     if not access_token:
-        print("엑세스 토큰 갱신 실패")
+        print("액세스 토큰 갱신 실패")
         return
 
     header = {"Authorization": f"Bearer {access_token}"}
@@ -65,9 +69,8 @@ def send_kakao_message(text):
         },
     }
     
-    response = requests.post(url, headers=header, json={"template_object": json.dumps(post)}) if 'json' in globals() else requests.post(url, headers=header, data={"template_object": str(post)})
-    # 간편한 딕셔너리 전송 방식
-    response = requests.post(url, headers=header, data={"template_object": str(post).replace("'", '"')})
+    data = {"template_object": json.dumps(post)}
+    response = requests.post(url, headers=header, data=data)
     return response.json()
 
 if __name__ == "__main__":
@@ -81,6 +84,6 @@ if __name__ == "__main__":
 
 💡 시장 특징 및 뉴스 핵심 요약 완료
 """
-    # 전송 실행
+    # 실제 카카오톡 전송을 원하시면 아래 주석(#)을 해제하세요.
     # send_kakao_message(message)
     print(message)
