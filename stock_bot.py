@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 
 def refresh_access_token(client_id, refresh_token):
@@ -21,19 +22,26 @@ def refresh_access_token(client_id, refresh_token):
         return None
 
 def send_kakao_message(access_token, text):
-    header = {"Authorization": f"Bearer {access_token}"}
+    header = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
+    }
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
-    data = {
-        "template_object": {
-            "object_type": "text",
-            "text": text,
-            "link": {
-                "web_url": "https://www.naver.com",
-                "mobile_web_url": "https://www.naver.com"
-            }
+    
+    template_object = {
+        "object_type": "text",
+        "text": text,
+        "link": {
+            "web_url": "https://www.naver.com",
+            "mobile_web_url": "https://www.naver.com"
         }
     }
-    response = requests.post(url, headers=header, json=data)
+    
+    data = {
+        "template_object": json.dumps(template_object)
+    }
+    
+    response = requests.post(url, headers=header, data=data)
     
     print("카카오 API 응답 코드:", response.status_code)
     print("카카오 API 응답 내용:", response.text)
