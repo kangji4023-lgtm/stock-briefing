@@ -39,7 +39,7 @@ def send_kakao_message(access_token, text):
 if __name__ == "__main__":
     print("주식 브리핑 작업을 실행합니다.")
     
-    CLIENT_ID = os.environ.get("KAKAO_CLIENT_ID")
+    CLIENT_ID = os.environ.get("KAKAO_REST_API_KEY")
     REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN")
     
     if not CLIENT_ID or not REFRESH_TOKEN:
