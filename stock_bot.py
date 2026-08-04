@@ -17,7 +17,7 @@ def refresh_access_token(client_id, refresh_token):
     if "access_token" in result:
         return result["access_token"]
     else:
-        print(f"토큰 갱신 실패: {result}")
+        print(f"토큰 갱신 실패 상세 내용: {result}")
         return None
 
 def send_kakao_message(access_token, text):
@@ -34,6 +34,10 @@ def send_kakao_message(access_token, text):
         }
     }
     response = requests.post(url, headers=header, json=data)
+    
+    print("카카오 API 응답 코드:", response.status_code)
+    print("카카오 API 응답 내용:", response.text)
+    
     return response.json()
 
 if __name__ == "__main__":
@@ -48,8 +52,7 @@ if __name__ == "__main__":
         access_token = refresh_access_token(CLIENT_ID, REFRESH_TOKEN)
         
         if access_token:
-            message = "[주식 브리핑 자동화]\n오늘의 증시 요약 테스트 메시지입니다."
+            message = "[주식 브리핑 자동화]\n테스트 메시지입니다."
             res = send_kakao_message(access_token, message)
-            print("메시지 전송 결과:", res)
         else:
-            print("유효한 액세스 토큰이 없어 메시지를 전송할 수 없습니다.")
+            print("유효한 액세스 토큰을 받아오지 못했습니다.")
