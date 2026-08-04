@@ -8,7 +8,11 @@ def refresh_access_token(client_id, refresh_token):
         "client_id": client_id,
         "refresh_token": refresh_token
     }
-    response = requests.post(url, data=data)
+    # Content-Type 헤더를 추가하여 KOE001 에러 해결
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
+    }
+    response = requests.post(url, data=data, headers=headers)
     result = response.json()
     
     if "access_token" in result:
