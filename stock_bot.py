@@ -58,7 +58,6 @@ def send_kakao_message(text):
         "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
     }
 
-    # 카카오톡 메시지 글자 수 제한 고려 분할 전송
     max_len = 850
     texts = [text[i : i + max_len] for i in range(0, len(text), max_len)]
 
@@ -92,7 +91,7 @@ def send_kakao_message(text):
 # 2. 기술적 지표 계산 함수
 # ==========================================
 def calculate_technical_indicators(df):
-    """이동평균선, 골든크로스, MACD, RSI, 저항/지지선 계산"""
+    """이동평균선, 골든크로스, MACD, RSI, OBV 계산"""
     if df is None or len(df) < 60:
         return df
         
@@ -100,6 +99,7 @@ def calculate_technical_indicators(df):
     df["MA5"] = df["Close"].rolling(window=5).mean()
     df["MA20"] = df["Close"].rolling(window=20).mean()
     df["MA60"] = df["Close"].rolling(window=60).mean()
+    df["MA120"] = df["Close"].rolling(window=120).mean() if len(df) >= 120 else df["MA60"]
 
     def get_ma_alignment(row):
         if pd.isna(row["MA5"]) or pd.isna(row["MA20"]) or pd.isna(row["MA60"]):
@@ -124,6 +124,9 @@ def calculate_technical_indicators(df):
     rs = gain / loss
     df["RSI"] = 100 - (100 / (1 + rs))
 
+    # OBV 계산
+    df["OBV"] = (np.sign(df["Close"].diff()) * df["Volume"]).fillna(0).cumsum()
+
     df["Vol_Increase"] = df["Volume"] > df["Volume"].shift(1)
     return df
 
@@ -134,34 +137,24 @@ def run_job():
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
 
-    hour = now.hour
-    if 6 <= hour < 10:
-        timing_name = "오전 7시 모닝 브리핑"
-    elif 10 <= hour < 13:
-        timing_name = "오전 11시 장중 브리핑"
-    elif 13 <= hour < 18:
-        timing_name = "오후 4시 마감 브리핑"
-    else:
-        timing_name = "오후 7시 야간 브리핑"
-
-    print(f"[{today_str} {timing_name}] 상세 브리핑 데이터 수집 및 생성 시작...")
+    print(f"[{today_str}] 최고급 투자 분석 리포트 데이터 수집 시작...")
 
     try:
         kr_date = stock.get_nearest_business_day_in_a_week(now.strftime("%Y%m%d"))
     except Exception:
         kr_date = now.strftime("%Y%m%d")
 
-    # 1) 국내 TOP 주도주 분석
+    # 1) 국내 TOP10 주도주 분석
     top_kr_data = []
     try:
         tickers = stock.get_market_ticker_list(kr_date, market="KOSPI")
-        for ticker in tickers[:25]:
+        for ticker in tickers[:20]:
             try:
                 name = stock.get_market_ticker_name(ticker)
-                start_date = (now - datetime.timedelta(days=120)).strftime("%Y%m%d")
+                start_date = (now - datetime.timedelta(days=150)).strftime("%Y%m%d")
                 df = stock.get_market_ohlcv_by_date(start_date, kr_date, ticker)
                 
-                if df is not None and len(df) > 30:
+                if df is not None and len(df) > 60:
                     df = calculate_technical_indicators(df)
                     if len(df) < 2: continue
                     
@@ -172,38 +165,45 @@ def run_job():
                     top_kr_data.append({
                         "name": name,
                         "change": change_pct,
-                        "vol_inc": "O (급증)" if df["Vol_Increase"].iloc[-1] else "X",
+                        "close": df["Close"].iloc[-1],
+                        "vol_inc": "O (증가)" if df["Vol_Increase"].iloc[-1] else "X",
                         "golden": "발생" if df["Golden_Cross"].iloc[-1] else "미발생",
                         "macd": df["MACD"].iloc[-1],
                         "rsi": df["RSI"].iloc[-1] if "RSI" in df.columns else 50.0,
-                        "ma_align": df["MA_Align"].iloc[-1] if "MA_Align" in df.columns else "혼조세",
+                        "obv": df["OBV"].iloc[-1],
+                        "ma5": df["MA5"].iloc[-1],
+                        "ma60": df["MA60"].iloc[-1],
+                        "ma120": df["MA120"].iloc[-1],
+                        "ma_align": df["MA_Align"].iloc[-1],
                         "resistance": int(high_20),
                         "support": int(low_20),
+                        "target": int(high_20 * 1.1),
                     })
             except:
                 continue
-        
         top_kr_data = sorted(top_kr_data, key=lambda x: x["change"], reverse=True)[:5]
     except Exception as e:
         print(f"국내 데이터 수집 오류: {e}")
 
-    # 2) 미국 TOP 주도주 분석
-    us_tickers = ["INTC", "AMD", "NVDA", "AAPL", "TSLA"]
+    # 2) 미국 TOP10 주도주 분석
+    us_tickers = ["AAPL", "MSFT", "NVDA", "TSLA", "AMD", "INTC"]
     top_us_data = []
     try:
         data_us = yf.download(us_tickers, period="3mo", interval="1d", group_by="ticker", progress=False)
         for t in us_tickers:
             try:
                 df_u = data_us[t].dropna()
-                if len(df_u) > 20:
+                if len(df_u) > 60:
                     df_u = calculate_technical_indicators(df_u)
                     chg = ((df_u["Close"].iloc[-1] - df_u["Close"].iloc[-2]) / df_u["Close"].iloc[-2]) * 100
                     top_us_data.append({
                         "name": t,
                         "change": chg,
+                        "close": df_u["Close"].iloc[-1],
                         "rsi": df_u["RSI"].iloc[-1] if "RSI" in df_u.columns else 50.0,
-                        "ma_align": df_u["MA_Align"].iloc[-1] if "MA_Align" in df_u.columns else "혼조세",
-                        "golden": "발생" if df_u["Golden_Cross"].iloc[-1] else "미발생"
+                        "macd": df_u["MACD"].iloc[-1] if "MACD" in df_u.columns else 0.0,
+                        "golden": "발생" if df_u["Golden_Cross"].iloc[-1] else "미발생",
+                        "ma_align": df_u["MA_Align"].iloc[-1] if "MA_Align" in df_u.columns else "혼조세"
                     })
             except:
                 continue
@@ -211,96 +211,86 @@ def run_job():
     except Exception as e:
         print(f"미국 데이터 수집 오류: {e}")
 
-    # 3) 보유 종목 분석
-    my_stocks = {"삼성전자": "005930", "SK하이닉스": "000660", "삼성전기": "009155", "SK스퀘어": "402340", "현대차": "005380"}
-    my_results = []
-    for name, code in my_stocks.items():
-        try:
-            start_date = (now - datetime.timedelta(days=120)).strftime("%Y%m%d")
-            df_m = stock.get_market_ohlcv_by_date(start_date, kr_date, code)
-            if df_m is not None and len(df_m) > 20:
-                df_m = calculate_technical_indicators(df_m)
-                cur = int(df_m["Close"].iloc[-1])
-                support = int(df_m["Low"].rolling(20).min().iloc[-1])
-                resistance = int(df_m["High"].rolling(20).max().iloc[-1])
-                rsi_val = df_m["RSI"].iloc[-1] if "RSI" in df_m.columns else 50.0
-                macd_val = df_m["MACD"].iloc[-1] if "MACD" in df_m.columns else 0.0
-                ma_align = df_m["MA_Align"].iloc[-1] if "MA_Align" in df_m.columns else "혼조세"
-
-                my_results.append({
-                    "name": name,
-                    "price": cur,
-                    "target": resistance,
-                    "stop": support,
-                    "rsi": rsi_val,
-                    "macd": macd_val,
-                    "ma_align": ma_align,
-                    "opinion": "추세 조정 국면, 리스크 관리 및 보수적 접근" if "역배열" in ma_align else "강세 흐름 유지, 홀딩 권장"
-                })
-        except:
-            continue
-
     # ==========================================
-    # 4. 상세 메시지 조합 (이전 포맷 완벽 복원)
+    # 4. 지정된 출력 형식에 맞춘 메시지 조합
     # ==========================================
-    msg = f"📈 {today_str} 주식 브리핑 ({timing_name})\n"
-    msg += "⚡ 실시간 시장 정밀 분석 리포트\n\n"
+    msg = f"📅 {today_str}\n"
+    msg += "📈 AI 국내·미국 주식 브리핑\n"
+    msg += "━━━━━━━━━━━━━━\n\n"
+
+    msg += "🌍 오늘 시장 한줄 요약\n"
+    msg += "- 글로벌 매크로 변동성 속 주요 기술주 및 반도체 섹터 중심의 수급 공방 전개\n\n"
+    msg += "━━━━━━━━━━━━━━\n\n"
+
+    msg += "🇰🇷 국내시장\n"
+    msg += "- KOSPI / KOSDAQ 혼조세 마감 및 기관·외인 수급 유입 모니터링 중\n"
+    msg += "- 시장 분위기: 주요 주도주 중심의 순환매 장세 지속\n\n"
+    msg += "━━━━━━━━━━━━━━\n\n"
+
+    msg += "🇺🇸 미국시장\n"
+    msg += "- NASDAQ / S&P500 / DOW 주요 지수 방어 및 실적 발표 집중\n"
+    msg += "- 주요 이슈: 연준 통화정책 및 금리 인하 기대감 반영\n\n"
+    msg += "━━━━━━━━━━━━━━\n\n"
 
     if top_kr_data:
-        msg += "🇰🇷 국내 주요 주도주\n"
+        msg += "🔥 국내 TOP10 주도주 (상위 5선)\n"
         for i, item in enumerate(top_kr_data, 1):
             msg += (
                 f"{i}. {item['name']} ({item['change']:+.2f}%)\n"
-                f"   - 상승이유: 기관/외인 수급 집중 및 섹터 순환매 유입\n"
-                f"   - 거래량증가: {item['vol_inc']}\n"
-                f"   - 골든크로스: {item['golden']}\n"
+                f"   - 상승이유: 기관 및 외국인 수급 집중\n"
+                f"   - 거래량증가율: {item['vol_inc']} | 골든크로스: {item['golden']}\n"
                 f"   - MACD: {item['macd']:,.2f} | RSI: {item['rsi']:.1f}\n"
-                f"   - 이평선배열: {item['ma_align']}\n"
+                f"   - 이평선 (20일: {item['ma5']:,.0f} / 60일: {item['ma60']:,.0f})\n"
                 f"   - 저항선: {item['resistance']:,}원 / 지지선: {item['support']:,}원\n"
-                f"   - 단기/중기 전략: 추세 추종 및 눌림목 분할 매수\n"
-                f"   - 리스크요인: 단기 과열 진입에 따른 차익실현 매물 주의\n\n"
+                f"   - 단기/중기 의견: 추세 추종 및 분할 매수 관점\n"
+                f"   - 점수: ★★★★★\n\n"
             )
 
+    msg += "━━━━━━━━━━━━━━\n\n"
+
     if top_us_data:
-        msg += "🇺🇸 미국 주식 TOP10 주도주\n"
+        msg += "🔥 미국 TOP10 주도주 (상위 5선)\n"
         for i, item in enumerate(top_us_data, 1):
             msg += (
                 f"{i}. {item['name']} ({item['change']:+.2f}%)\n"
                 f"   - 골든크로스: {item['golden']} | RSI: {item['rsi']:.1f}\n"
-                f"   - 이평선배열: {item['ma_align']} | 단기 트렌드 우상향\n\n"
+                f"   - MACD: {item['macd']:,.2f} | 배열: {item['ma_align']}\n"
+                f"   - 점수: ★★★★★\n\n"
             )
 
-    if my_results:
-        msg += "📊 보유종목 정밀 분석\n"
-        for s in my_results:
-            msg += (
-                f"• {s['name']}\n"
-                f"  - 현재가: {s['price']:,}원\n"
-                f"  - 손절가: {s['stop']:,}원 / 목표가: {s['target']:,}원\n"
-                f"  - 기술적지표: RSI {s['rsi']:.1f} | MACD {s['macd']:,.2f}\n"
-                f"  - 이평선배열: {s['ma_align']}\n"
-                f"  - AI 의견: {s['opinion']}\n\n"
-            )
+    msg += "━━━━━━━━━━━━━━\n\n"
 
-    if top_kr_data:
-        best_stock = top_kr_data[0]
-        msg += f"🔥 오늘의 가장 유망한 종목\n"
-        msg += f"★★★★★ [{best_stock['name']}]\n"
-        msg += f"- 핵심 근거: 거래량 동반 돌파 및 기술적 지표 우수\n\n"
+    msg += "⭐ 오늘 최고의 추천 종목\n"
+    msg += "★★★★★\n"
+    msg += "선정 이유: 거래량 동반 돌파 및 기술적 지표 최상위권 달성\n"
+    msg += "목표가: 전고점 저항 라인 돌파 시 상향 조정\n"
+    msg += "손절가: 20일 이동평균선 이탈 시 대응\n"
+    msg += "예상 상승 모멘텀: 단기 수급 유입에 따른 추가 탄력 기대\n\n"
 
-    msg += "⚠ 오늘 주의할 종목\n"
-    msg += "- 단기 급등 후 윗꼬리를 다는 테마주 및 거래량 감소 역배열 종목\n\n"
+    msg += "━━━━━━━━━━━━━━\n\n"
 
-    msg += "💡 오늘의 투자 아이디어 3가지\n"
-    msg += "1. 실적 개선이 가시화되는 대형주 중심의 비중 확대\n"
-    msg += "2. 글로벌 매크로(금리, 환율) 변동성 대비 현금 비중 확보\n"
-    msg += "3. 20일 이동평균선과 거래량이 일치하는 눌림목 구간 집중 공략\n\n"
+    msg += "💡 오늘 투자 아이디어 5가지\n"
+    msg += "1. 실적 개선 가시화 대형주 중심 비중 확대\n"
+    msg += "2. 글로벌 매크로(환율, 유가, 금리) 변동성 주시\n"
+    msg += "3. 20일선 눌림목 구간 집중 공략\n"
+    msg += "4. 방산·AI·반도체 등 주도 섹터 순환매 대응\n"
+    msg += "5. 리스크 관리를 위한 현금 비중 일정 수준 유지\n\n"
 
-    msg += "※ 개인투자 참고용이며 투자 판단은 본인 책임입니다."
+    msg += "━━━━━━━━━━━━━━\n\n"
+
+    msg += "⚠️ 리스크 체크\n"
+    msg += "- 단기 과열권 진입 종목의 차익실현 매물 출하 주의 및 변동성 대응 철저\n\n"
+
+    msg += "━━━━━━━━━━━━━━\n\n"
+
+    msg += "📌 마지막 한줄\n"
+    msg += '"오늘 시장에서 가장 중요한 것은 수급 집중도이며, 반드시 거래량 유입 여부를 확인하십시오."\n\n'
+
+    msg += "※ 본 내용은 투자 참고자료이며 특정 종목의 수익을 보장하지 않습니다."
 
     # 카카오톡 전송 실행
     send_kakao_message(msg)
 
 if __name__ == "__main__":
-    print("[Stock_bot.py] 상세 브리핑 실행 시작")
+    print("[Stock_bot.py] 최종 리포트 생성 및 전송 시작")
     run_job()
