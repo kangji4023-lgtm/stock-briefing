@@ -35,5 +35,7 @@ jobs:
           python stock_bot.py
         env:
           TZ: Asia/Seoul
-          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
-          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          KAKAO_REST_API_KEY: '3c9a29d58ca8030c4e9a119d4249e305'
+          KAKAO_REFRESH_TOKEN: 'SEB-3upB-Ex2WOcM-6gizd-SzSnmFZ_PAAAAAgoNFZsAAAGf0Jl5c6j01SImjvGc'
+          KRX_ID: 'dmswl904'
+          KRX_PW: 'kang402300*'
