@@ -10,7 +10,6 @@ import yfinance as yf
 # ==========================================================
 # 1. 환경 변수 및 카카오 토큰 설정
 # ==========================================================
-# GitHub Secrets에 등록된 키를 환경변수에서 안전하게 가져옵니다.
 REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY")
 REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN")
 
@@ -62,27 +61,48 @@ def send_to_kakao(text):
 
 
 # ==========================================================
-# 2. 주식 데이터 수집 및 브리핑 내용 생성
+# 2. 주식 데이터 수집 및 상세 브리핑 내용 생성
 # ==========================================================
 def get_stock_briefing():
     try:
-        # 예시: 주요 지수 (S&P 500, 나스닥 등) 데이터 가져오기
-        tickers = {"S&P 500": "^GSPC", "Nasdaq": "^IXIC", "US Dollar/KRW": "USDKRW=X"}
+        # 오늘 날짜를 동적으로 가져오기 (하드코딩 방지)
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
         
-        briefing_text = "[📈 오늘의 모닝 주식 브리핑]\n\n"
+        briefing_text = f"📈 {today_str} 주식 브리핑 (오전 7시 모닝 브리핑)\n"
+        briefing_text += "⚡ 실시간 시장 정밀 분석 리포트\n\n"
+        briefing_text += "🇰🇷 국내 주요 주도주\n"
         
-        for name, symbol in tickers.items():
-            data = yf.Ticker(symbol).history(period="2d")
-            if len(data) >= 2:
-                close_price = data['Close'].iloc[-1]
-                prev_price = data['Close'].iloc[-2]
+        # 분석할 국내 주요 종목 예시 (사용자님의 기존 종목 리스트로 변경 가능)
+        stocks = {
+            "LG에너지솔루션": "373220.KS",
+            "삼성바이오로직스": "207940.KS"
+        }
+        
+        idx = 1
+        for name, symbol in stocks.items():
+            df = yf.Ticker(symbol).history(period="1mo")
+            if not df.empty and len(df) >= 2:
+                close_price = df['Close'].iloc[-1]
+                prev_price = df['Close'].iloc[-2]
                 diff = close_price - prev_price
                 diff_percent = (diff / prev_price) * 100
                 
-                sign = "📈 +" if diff > 0 else "📉 "
-                briefing_text += f"• {name}: {close_price:,.2f} ({sign}{diff_percent:.2f}%)\n"
+                sign = "(+ " if diff > 0 else "("
+                
+                # 기술적 지표 간이 계산 (MACD, RSI 등)
+                delta = df['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                rsi = 100 - (100 / (1 + rs))
+                current_rsi = rsi.iloc[-1] if not rsi.empty else 50.0
+                
+                briefing_text += f"{idx}. {name} {sign}{diff_percent:.2f}%)\n"
+                briefing_text += f"   - 현재가: {close_price:,.0f}원\n"
+                briefing_text += f"   - RSI: {current_rsi:.1f}\n\n"
             else:
-                briefing_text += f"• {name}: 데이터 확인 불가\n"
+                briefing_text += f"{idx}. {name}: 데이터 수신 실패\n\n"
+            idx += 1
                 
         return briefing_text
     except Exception as e:
@@ -94,10 +114,6 @@ def get_stock_briefing():
 # ==========================================================
 if __name__ == "__main__":
     print("주식 브리핑 봇 실행 중...")
-    
-    # 1. 주식 브리핑 텍스트 생성
     message = get_stock_briefing()
     print("생성된 메시지:\n", message)
-    
-    # 2. 카카오톡으로 전송
     send_to_kakao(message)
