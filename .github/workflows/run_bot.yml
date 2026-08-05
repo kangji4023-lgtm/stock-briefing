@@ -1,15 +1,21 @@
-name: Stock Auto Report
+name: Stock Briefing Bot
 
 on:
   schedule:
+    # 한국 시간(KST) 기준 오전 7시, 11시, 오후 3시, 오후 7시 자동 실행 매핑 (UTC 기준)
     - cron: '0 22,2,6,10 * * *'
-  workflow_dispatch:
+    
+  workflow_dispatch: # 수동 실행 버튼 활성화
 
 jobs:
-  run-python:
+  run-bot:
     runs-on: ubuntu-latest
+    
+    env:
+      TZ: Asia/Seoul
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -19,10 +25,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests yfinance pykrx pandas
+          python -m pip install --upgrade pip
+          pip install numpy pandas requests pytz yfinance
 
-      - name: Run script
+      - name: Run stock briefing script
         env:
-          PLAYMCP_WEBHOOK_URL: ${{ secrets.PLAYMCP_WEBHOOK_URL }}
+          TZ: Asia/Seoul
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
         run: |
-          python -c "import glob; import subprocess; files = glob.glob('**/Stock_bot.py', recursive=True); subprocess.run(['python', files[0]]) if files else print('파일을 찾을 수 없습니다.')"
+          python -c "import glob; import subprocess; files = glob.glob('**/stock_bot.py', recursive=True); subprocess.run(['python', files[0]]) if files else print('Error: stock_bot.py not found!')"
