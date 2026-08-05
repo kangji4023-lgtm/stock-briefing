@@ -4,15 +4,39 @@ import requests
 import yfinance as yf
 
 # ==========================================================
-# 카카오 액세스 토큰 직접 입력 (토큰 갱신 에러 원천 차단)
+# 카카오 인증 토큰 설정 (방금 발급받은 최신 리프레시 토큰 반영 완료)
 # ==========================================================
-ACCESS_TOKEN = "AJXH9B9y1ymGUjGmmrcLPaLQ0-UEuBAAAAAPoXEi0AAAGfy0UaNaj01SImjvGc"
+REST_API_KEY = "3c9a29d58ca8030c4e9a119d4249e305"
+REFRESH_TOKEN = "tYj7C7ae3SzwEzX8hj_tgHGfUA-p1MP3AAAAAgoXEi0AAAGfy0UaL6j01SImjvGc"
+
+def refresh_access_token(rest_api_key, refresh_token):
+    """카카오 리프레시 토큰을 이용해 새로운 액세스 토큰을 자동으로 재발급 받는 함수"""
+    url = "https://kauth.kakao.com/oauth/token"
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": rest_api_key,
+        "refresh_token": refresh_token
+    }
+    response = requests.post(url, data=data)
+    result = response.json()
+    
+    if "access_token" in result:
+        return result["access_token"]
+    else:
+        print("토큰 갱신 실패 응답:", result)
+        return None
 
 def send_to_kakao(text):
-    """액세스 토큰을 이용해 카카오톡 '나에게 보내기' 메시지 즉시 전송"""
+    """새로 발급받은 액세스 토큰으로 카카오톡 '나에게 보내기' 메시지 전송"""
+    access_token = refresh_access_token(REST_API_KEY, REFRESH_TOKEN)
+    
+    if not access_token:
+        print("에러: 유효한 액세스 토큰을 가져오지 못했습니다.")
+        return
+
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     headers = {
-        "Authorization": "Bearer " + ACCESS_TOKEN
+        "Authorization": "Bearer " + access_token
     }
     
     content = {
@@ -77,6 +101,9 @@ def get_analyst_briefing():
         return f"[애널리스트 봇 오류 발생]\n내용: {str(e)}"
 
 
+# ==========================================================
+# 메인 실행부
+# ==========================================================
 if __name__ == "__main__":
     print("애널리스트 모닝 브리핑 봇 실행 중...")
     message = get_analyst_briefing()
