@@ -1,16 +1,18 @@
-name: Stock Briefing Bot
+name: Stock Multi Briefing Bot
 
 on:
   schedule:
-    # 한국 시간(KST) 기준 오전 7시, 11시, 오후 3시, 오후 7시 자동 실행 매핑 (UTC 기준)
-    - cron: '0 22,2,6,10 * * *'
+    # 한국 시간(KST) 기준 하루 4번 실행 (UTC 시간 기준)
+    - cron: '0 22 * * *'  # 오전 7:00 (KST)
+    - cron: '0 2 * * *'   # 오전 11:00 (KST)
+    - cron: '0 7 * * *'   # 오후 4:00 (16:00, KST)
+    - cron: '0 10 * * *'  # 오후 7:00 (19:00, KST)
     
-  workflow_dispatch: # 수동 실행 버튼 활성화
+  workflow_dispatch: # GitHub Actions 탭에서 수동 실행 버튼 활성화
 
 jobs:
-  run-bot:
+  run-briefing-bot:
     runs-on: ubuntu-latest
-    
     env:
       TZ: Asia/Seoul
 
@@ -26,12 +28,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy pandas requests pytz yfinance
+          pip install numpy pandas requests yfinance
 
-      - name: Run stock briefing script
+      - name: Run stock bot script
+        run: |
+          python stock_bot.py
         env:
           TZ: Asia/Seoul
-          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
-          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
-        run: |
-          python -c "import glob; import subprocess; files = glob.glob('**/stock_bot.py', recursive=True); subprocess.run(['python', files[0]]) if files else print('Error: stock_bot.py not found!')"
