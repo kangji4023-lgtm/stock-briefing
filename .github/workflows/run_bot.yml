@@ -2,13 +2,13 @@ name: Stock Multi Briefing Bot
 
 on:
   schedule:
-    # 한국 시간(KST) 기준 하루 4번 실행 (오전 7시, 11시, 오후 4시, 7시)
+    # 한국 시간(KST) 기준 하루 4번 실행 (UTC 시간 기준 자동 반영)
     - cron: '0 22 * * *'  # 오전 7:00 (KST)
     - cron: '0 2 * * *'   # 오전 11:00 (KST)
-    - cron: '0 7 * * *'   # 오후 4:00 (KST)
+    - cron: '30 6 * * *'  # 오후 3시 30분 (15:30, KST)
     - cron: '0 10 * * *'  # 오후 7:00 (KST)
     
-  workflow_dispatch: # 수동 테스트 버튼
+  workflow_dispatch: # GitHub Actions 탭에서 수동 실행 버튼 활성화
 
 jobs:
   run-briefing-bot:
