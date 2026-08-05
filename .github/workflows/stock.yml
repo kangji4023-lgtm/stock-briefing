@@ -1,0 +1,28 @@
+name: Stock Auto Report
+
+on:
+  schedule:
+    - cron: '0 22,2,6,10 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests yfinance pykrx pandas
+
+      - name: Run script
+        env:
+          PLAYMCP_WEBHOOK_URL: ${{ secrets.PLAYMCP_WEBHOOK_URL }}
+        run: |
+          find . -name "Stock_bot.py" -exec python {} \;
