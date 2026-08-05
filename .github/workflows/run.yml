@@ -2,7 +2,7 @@ name: Stock Multi Briefing Bot
 
 on:
   schedule:
-    # 한국 시간(KST) 기준 하루 4번 정확히 동작하도록 UTC 시간 매핑 보정
+    # 한국 시간(KST) 기준 하루 4번 정확히 동작하도록 설정
     - cron: '0 22 * * *'  # 오전 7:00 (KST)
     - cron: '0 2 * * *'   # 오전 11:00 (KST)
     - cron: '30 6 * * *'  # 오후 3시 30분 (15:30, KST)
