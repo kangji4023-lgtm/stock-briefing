@@ -58,6 +58,7 @@ def send_kakao_message(text):
         "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
     }
 
+    # 카카오톡 메시지 글자 수 제한 고려 분할 전송
     max_len = 850
     texts = [text[i : i + max_len] for i in range(0, len(text), max_len)]
 
@@ -132,8 +133,6 @@ def calculate_technical_indicators(df):
 def run_job():
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
-    weekday = now.weekday()
-    is_weekend = (weekday >= 5)
 
     hour = now.hour
     if 6 <= hour < 10:
@@ -156,7 +155,7 @@ def run_job():
     top_kr_data = []
     try:
         tickers = stock.get_market_ticker_list(kr_date, market="KOSPI")
-        for ticker in tickers[:20]:
+        for ticker in tickers[:25]:
             try:
                 name = stock.get_market_ticker_name(ticker)
                 start_date = (now - datetime.timedelta(days=120)).strftime("%Y%m%d")
@@ -167,14 +166,12 @@ def run_job():
                     if len(df) < 2: continue
                     
                     change_pct = ((df["Close"].iloc[-1] - df["Close"].iloc[-2]) / df["Close"].iloc[-2]) * 100
-                    cur_close = df["Close"].iloc[-1]
                     high_20 = df["High"].rolling(20).max().iloc[-1]
                     low_20 = df["Low"].rolling(20).min().iloc[-1]
                     
                     top_kr_data.append({
                         "name": name,
                         "change": change_pct,
-                        "close": cur_close,
                         "vol_inc": "O (급증)" if df["Vol_Increase"].iloc[-1] else "X",
                         "golden": "발생" if df["Golden_Cross"].iloc[-1] else "미발생",
                         "macd": df["MACD"].iloc[-1],
@@ -191,7 +188,7 @@ def run_job():
         print(f"국내 데이터 수집 오류: {e}")
 
     # 2) 미국 TOP 주도주 분석
-    us_tickers = ["INTC", "AMD", "NVDA", "AAPL", "TSLA", "MSFT"]
+    us_tickers = ["INTC", "AMD", "NVDA", "AAPL", "TSLA"]
     top_us_data = []
     try:
         data_us = yf.download(us_tickers, period="3mo", interval="1d", group_by="ticker", progress=False)
@@ -223,7 +220,7 @@ def run_job():
             df_m = stock.get_market_ohlcv_by_date(start_date, kr_date, code)
             if df_m is not None and len(df_m) > 20:
                 df_m = calculate_technical_indicators(df_m)
-                cur = df_m["Close"].iloc[-1]
+                cur = int(df_m["Close"].iloc[-1])
                 support = int(df_m["Low"].rolling(20).min().iloc[-1])
                 resistance = int(df_m["High"].rolling(20).max().iloc[-1])
                 rsi_val = df_m["RSI"].iloc[-1] if "RSI" in df_m.columns else 50.0
@@ -233,8 +230,8 @@ def run_job():
                 my_results.append({
                     "name": name,
                     "price": cur,
-                    "target": int(resistance * 1.2),
-                    "stop": int(support * 0.9),
+                    "target": resistance,
+                    "stop": support,
                     "rsi": rsi_val,
                     "macd": macd_val,
                     "ma_align": ma_align,
@@ -244,7 +241,7 @@ def run_job():
             continue
 
     # ==========================================
-    # 4. 상세 메시지 조합
+    # 4. 상세 메시지 조합 (이전 포맷 완벽 복원)
     # ==========================================
     msg = f"📈 {today_str} 주식 브리핑 ({timing_name})\n"
     msg += "⚡ 실시간 시장 정밀 분석 리포트\n\n"
@@ -265,7 +262,7 @@ def run_job():
             )
 
     if top_us_data:
-        msg += "🇺🇸 미국 주식 TOP 주도주\n"
+        msg += "🇺🇸 미국 주식 TOP10 주도주\n"
         for i, item in enumerate(top_us_data, 1):
             msg += (
                 f"{i}. {item['name']} ({item['change']:+.2f}%)\n"
@@ -305,5 +302,5 @@ def run_job():
     send_kakao_message(msg)
 
 if __name__ == "__main__":
-    print("[Stock_bot.py] 상세 자동화 브리핑 실행 시작")
+    print("[Stock_bot.py] 상세 브리핑 실행 시작")
     run_job()
