@@ -5,10 +5,10 @@ import requests
 import yfinance as yf
 
 # ==========================================================
-# 1. 카카오 API 설정 (본인의 REST API Key와 리프레시 토큰 입력)
+# 1. 카카오 API 설정 (토큰 및 키 완벽 반영)
 # ==========================================================
 REST_API_KEY = "2e2432752d3bcaaf637aa44cfb75a555"
-REFRESH_TOKEN = "tYj7C7ae3SzwEzX8hj_tgHGfUA-p1MP3AAAAAgoXEi0AAAGfy0UaL6j01SImjvGc"
+REFRESH_TOKEN = "tYj7C7ae3SzwEzX8hj_tgHGfUA-p1MP3AAAAAgoXEi0AAAGfy0UaLbj01SImjvGc"
 
 def refresh_access_token():
     """리프레시 토큰을 이용해 새로운 액세스 토큰을 재발급 받는 함수"""
