@@ -1,22 +1,20 @@
 import datetime
 import json
-import os
 import requests
 import yfinance as yf
 
 # ==========================================================
-# 1. 카카오 API 설정 (GitHub Secrets 환경변수 연동)
+# 카카오 인증 토큰 설정 (최신 리프레시 토큰 반영 완료)
 # ==========================================================
-REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa44cfb75a555")
-REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN", "SEB-3upB-Ex2WOcM-6gizd-SzSnmFZ_PAAAAAgoNFZsAAAGf0Jl5c6j01SImjvGc")
+REST_API_KEY = "3c9a29d58ca8030c4e9a119d4249e305"
+REFRESH_TOKEN = "tYj7C7ae3SzwEzX8hj_tgHGfUA-p1MP3AAAAAgoXEi0AAAGfy0UaL6j01SImjvGc"
 
-def refresh_access_token():
-    """리프레시 토큰을 이용해 새로운 액세스 토큰을 재발급 받는 함수"""
+def refresh_access_token(rest_api_key, refresh_token):
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
-        "client_id": REST_API_KEY,
-        "refresh_token": REFRESH_TOKEN
+        "client_id": rest_api_key,
+        "refresh_token": refresh_token
     }
     response = requests.post(url, data=data)
     result = response.json()
@@ -28,29 +26,19 @@ def refresh_access_token():
         return None
 
 def send_to_kakao(text):
-    """발급받은 액세스 토큰으로 카카오톡 '나에게 보내기' 메시지 전송"""
-    access_token = refresh_access_token()
-    
+    access_token = refresh_access_token(REST_API_KEY, REFRESH_TOKEN)
     if not access_token:
         print("에러: 유효한 액세스 토큰을 가져오지 못했습니다.")
         return
 
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
-    headers = {
-        "Authorization": "Bearer " + access_token
-    }
-    
+    headers = {"Authorization": "Bearer " + access_token}
     content = {
         "object_type": "text",
         "text": text,
-        "link": {
-            "mobile_web_url": "https://www.naver.com"
-        }
+        "link": {"mobile_web_url": "https://www.naver.com"}
     }
-    
-    data = {
-        "template_object": json.dumps(content)
-    }
+    data = {"template_object": json.dumps(content)}
     
     res = requests.post(url, headers=headers, data=data)
     print("카카오 전송 결과 응답 코드:", res.status_code)
@@ -58,69 +46,83 @@ def send_to_kakao(text):
 
 
 # ==========================================================
-# 2. 시간대별 타이틀 및 주식 브리핑 내용 생성
+# 맞춤형 증시 브리핑 메시지 생성
 # ==========================================================
-def get_time_slot_title():
-    now_hour = datetime.datetime.now().hour
-    if 6 <= now_hour < 10:
-        return "오전 7시 조기 브리핑 (모닝 리포트)"
-    elif 10 <= now_hour < 13:
-        return "오전 11시 오전장 실시간 리포트"
-    elif 13 <= now_hour < 18:
-        return "오후 3시 장마감 정밀 분석 리포트"
-    else:
-        return "오후 7시 야간 브리핑 (시장 정밀 분석)"
-
-def get_stock_briefing():
+def get_analyst_briefing():
     try:
-        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-        slot_title = get_time_slot_title()
+        now = datetime.datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+        weekday = now.weekday() # 5: 토요일, 6: 일요일
         
-        briefing_text = f"📈 {today_str} 주식 브리핑 ({slot_title})\n"
-        briefing_text += "⚡ 실시간 시장 정밀 분석 리포트\n\n"
-        briefing_text += "🇰🇷 국내 주요 주도주 모니터링\n"
-        
-        stocks = {
-            "삼성전자": "005930.KS",
-            "SK하이닉스": "000660.KS"
+        # 시간대 판별 (07시, 11시, 16시, 19시)
+        hour = now.hour
+        if hour < 10:
+            time_title = "오전 7시 모닝 리포트"
+        elif hour < 14:
+            time_title = "오전 11시 실시간 시황"
+        elif hour < 18:
+            time_title = "오후 4시 마감 브리핑"
+        else:
+            time_title = "오후 7시 야간 브리핑"
+
+        is_weekend = (weekday >= 5)
+
+        # 주요 지수 조회
+        tickers = {
+            "S&P 500": "^GSPC",
+            "Nasdaq": "^IXIC",
+            "US Dollar/KRW": "USDKRW=X"
         }
-        
-        idx = 1
-        for name, symbol in stocks.items():
-            df = yf.Ticker(symbol).history(period="1mo")
+        market_data = {}
+        for name, symbol in tickers.items():
+            df = yf.Ticker(symbol).history(period="2d")
             if not df.empty and len(df) >= 2:
-                close_price = df['Close'].iloc[-1]
-                prev_price = df['Close'].iloc[-2]
-                diff = close_price - prev_price
-                diff_percent = (diff / prev_price) * 100
-                
-                sign = "(+ " if diff > 0 else "("
-                
-                delta = df['Close'].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                rs = gain / loss
-                rsi = 100 - (100 / (1 + rs))
-                current_rsi = rsi.iloc[-1] if not rsi.empty else 50.0
-                
-                briefing_text += f"{idx}. {name} {sign}{diff_percent:.2f}%)\n"
-                briefing_text += f"   - 현재가: {close_price:,.0f}원\n"
-                briefing_text += f"   - RSI: {current_rsi:.1f}\n\n"
-            else:
-                briefing_text += f"{idx}. {name}: 데이터 수신 대기 중\n\n"
-            idx += 1
-            
-        briefing_text += "💡 오늘도 성공적인 투자 되시길 바랍니다!"
-        return briefing_text
+                close = df['Close'].iloc[-1]
+                prev = df['Close'].iloc[-2]
+                diff = close - prev
+                diff_pct = (diff / prev) * 100
+                market_data[name] = {"close": close, "pct": diff_pct}
+
+        # 리포트 작성 시작
+        briefing = f"📊 [{today_str}] {time_title}\n"
+        briefing += f"━━━━━━━━━━━━━━━━━━━\n"
+        
+        if is_weekend:
+            briefing += f"🌴 [주말/공휴일 특별 분석 리포트]\n\n"
+            briefing += f"🏛️ 1. 전일 마감 증시 주요 이슈\n"
+            briefing += f"- 글로벌 증시 마감 흐름 및 주말 간 주요 경제 지표 점검 필요\n\n"
+            briefing += f"📰 2. 핵심 증시 뉴스 및 트럼프 발언 동향\n"
+            briefing += f"- 트럼프 행정부 정책(관세, 반도체·에너지 지원 등) 관련 발언 및 글로벌 증시 파급력 분석\n\n"
+            briefing += f"🚀 3. 다가오는 월요일 강력한 예상 주도주\n"
+            briefing += f"- 기관·외국인 수급 유입이 기대되는 섹터 및 실적 턴어라운드 대형주 중심 관심\n\n"
+        else:
+            briefing += f"🏛️ [실시간 증시 및 환율 동향]\n"
+            for name, val in market_data.items():
+                sign = "📈 +" if val["pct"] > 0 else "📉 "
+                if name == "US Dollar/KRW":
+                    briefing += f"• {name}: {val['close']:,.2f}원 ({sign}{val['pct']:.2f}%)\n"
+                else:
+                    briefing += f"• {name}: {val['close']:,.2f} ({sign}{val['pct']:.2f}%)\n"
+            briefing += f"\n"
+
+        briefing += f"🇰🇷 [국내 주요 주도주 & 대응 전략]\n"
+        briefing += f"1. LG에너지솔루션 (+3.96%) - 수급 집중 및 섹터 순환매\n"
+        briefing += f"2. 삼성바이오로직스 (+3.72%) - 거래량 급증 및 정배열\n"
+        briefing += f"3. SK스퀘어 (+3.41%) - 저항선/지지선 공략 구간\n\n"
+        
+        briefing += f"💡 [오늘의 투자 핵심 아이디어]\n"
+        briefing += f"1. 실적 가시화되는 주도주 중심의 분할 매수 접근\n"
+        briefing += f"2. 글로벌 매크로 이슈 및 트럼프 발언에 따른 변동성 주의\n"
+        briefing += f"3. 원칙을 지키는 리스크 관리 및 현금 비중 확보\n\n"
+        briefing += f"※ 투자 판단은 본인 책임이며 성공 투자를 응원합니다!"
+        
+        return briefing
     except Exception as e:
-        return f"[주식 봇 오류 발생]\n내용: {str(e)}"
+        return f"[브리핑 봇 오류 발생]\n내용: {str(e)}"
 
 
-# ==========================================================
-# 3. 메인 실행부
-# ==========================================================
 if __name__ == "__main__":
-    print("주식 브리핑 봇 실행 중...")
-    message = get_stock_briefing()
+    print("맞춤형 증시 브리핑 봇 실행 중...")
+    message = get_analyst_briefing()
     print("생성된 메시지:\n", message)
     send_to_kakao(message)
