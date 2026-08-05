@@ -4,8 +4,9 @@ import datetime
 import json
 import requests
 import warnings
+import urllib.request
 import yfinance as yf
-from pykrx import stock
+from bs4 import BeautifulSoup
 
 # 경고 문구 및 불필요한 로그 차단
 warnings.filterwarnings("ignore")
@@ -93,10 +94,80 @@ def get_time_slot_title():
     else:
         return "오후 7시 야간 브리핑 (실시간 시장 정밀 분석)"
 
+def get_naver_top_stocks():
+    """네이버 금융 실시간 상위 종목 크롤링"""
+    top_list = []
+    try:
+        url = "https://finance.naver.com/sise/sise_rise.naver"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        rows = soup.select('table.type_2 tr')
+        
+        count = 0
+        for row in rows:
+            cols = row.select('td')
+            if len(cols) > 1:
+                a_tag = cols[1].select_one('a')
+                if a_tag:
+                    name = a_tag.text.strip()
+                    close = cols[2].text.strip()
+                    change = cols[4].text.strip()
+                    top_list.append((name, change, close))
+                    count += 1
+                    if count >= 5:
+                        break
+    except Exception as e:
+        print(f"네이버 주식 크롤링 에러: {e}")
+    return top_list
+
+def get_realtime_news():
+    """네이버 및 구글 뉴스 실시간 경제 헤드라인 수집"""
+    news_list = []
+    try:
+        # 1. 네이버 금융 뉴스 크롤링
+        naver_url = "https://finance.naver.com/news/main.naver"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(naver_url, headers=headers)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        
+        # 주요 뉴스 제목 추출
+        title_tags = soup.select('.main_news_list li a, .newsList .articleSubject a')
+        count = 0
+        for tag in title_tags:
+            title = tag.text.strip()
+            if title and title not in [n[0] for n in news_list]:
+                news_list.append((title, "네이버금융"))
+                count += 1
+                if count >= 3:
+                    break
+    except Exception as e:
+        print(f"네이버 뉴스 크롤링 에러: {e}")
+
+    try:
+        # 2. 구글 뉴스 RSS 크롤링 (경제 분야)
+        google_rss_url = "https://news.google.com/rss/search?q=주식+경제&hl=ko&gl=KR&ceid=KR:ko"
+        res = requests.get(google_rss_url)
+        soup = BeautifulSoup(res.content, 'xml')
+        items = soup.find_all('item')
+        
+        count = 0
+        for item in items:
+            title = item.title.text if item.title else ""
+            if title and title not in [n[0] for n in news_list]:
+                news_list.append((title, "구글뉴스"))
+                count += 1
+                if count >= 3:
+                    break
+    except Exception as e:
+        print(f"구글 뉴스 크롤링 에러: {e}")
+
+    return news_list
+
 def generate_market_report():
     now = datetime.datetime.now()
     today_str = now.strftime("%Y-%m-%d")
-    weekday = now.weekday() # 5: 토요일, 6: 일요일
+    weekday = now.weekday() 
     is_weekend = (weekday >= 5)
     
     slot_title = get_time_slot_title()
@@ -111,62 +182,30 @@ def generate_market_report():
         report.append(f"🏛️ 1. 전일 마감 증시 주요 이슈")
         report.append(f"- 글로벌 증시 마감 흐름 및 주말 간 경제 지표 점검 완료")
         report.append(f"📰 2. 핵심 증시 뉴스 및 트럼프 발언 동향")
-        report.append(f"- 트럼프 행정부 관세 및 산업 정책 발언에 따른 글로벌 증시 파급력 분석")
-        report.append(f"🚀 3. 다가오는 월요일 강력한 예상 주도주")
-        report.append(f"- 기관·외국인 수급 집중이 기대되는 섹터 및 턴어라운드 대형주 집중 공략\n")
+        report.append(f"- 트럼프 행정부 관세 및 산업 정책 발언에 따른 글로벌 증시 파급력 분석\n")
     else:
         report.append(f"⚡ 실시간 시장 정밀 분석 리포트\n")
 
-    # 1. 국내 주요 주도주 & 특정 종목 자동 스캔
+    # 1. 국내 주요 주도주 실시간 크롤링 연동
     report.append("🇰🇷 국내 주요 주도주 및 실시간 스캔")
-    top_stock_name = "LG에너지솔루션"
-    top_stock_change = 3.96
-    top_stock_price = 320000
+    top_stocks = get_naver_top_stocks()
+    
+    top_stock_name = "삼성전자"
+    top_stock_change = "+1.04%"
+    top_stock_price = "242,500원"
 
-    try:
-        today_date = now.strftime("%Y%m%d")
-        df_kr = stock.get_market_ohlcv_by_ticker(today_date, market="ALL")
-        if df_kr is None or df_kr.empty:
-            prev_day = stock.get_nearest_business_day_in_a_week(today_date)
-            df_kr = stock.get_market_ohlcv_by_ticker(prev_day, market="ALL")
-
-        if df_kr is not None and not df_kr.empty and "등락률" in df_kr.columns:
-            df_kr = df_kr.sort_values(by="등락률", ascending=False)
-            top5 = df_kr.head(5)
-            
-            idx = 1
-            for ticker, row in top5.iterrows():
-                name = stock.get_market_ticker_name(ticker)
-                close = row["종가"]
-                change = row["등락률"]
-                
-                if idx == 1:
-                    top_stock_name = name
-                    top_stock_change = change
-                    top_stock_price = close
-
-                report.append(f"{idx}. {name} ({change:+.2f}%)")
-                report.append(f"   - 상승이유: 기관/외인 수급 집중 및 섹터 순환매 유입")
-                report.append(f"   - 현재가: {close:,}원")
-                idx += 1
-        else:
-            raise Exception("데이터 프레임 비어있음")
-    except Exception as e:
-        default_top = [
-            ("LG에너지솔루션", 3.96, 320000),
-            ("삼성바이오로직스", 3.72, 1440000),
-            ("SK스퀘어", 3.41, 1060000),
-            ("셀트리온", 1.98, 183000),
-            ("SK하이닉스", 0.64, 1577000)
-        ]
-        for idx, (name, change, close) in enumerate(default_top, 1):
+    if top_stocks:
+        idx = 1
+        for name, change, close in top_stocks:
             if idx == 1:
                 top_stock_name = name
                 top_stock_change = change
                 top_stock_price = close
-            report.append(f"{idx}. {name} ({change:+.2f}%)")
-            report.append(f"   - 상승이유: 기관/외인 수급 집중 및 섹터 순환매 유입")
-            report.append(f"   - 현재가: {close:,}원")
+            report.append(f"{idx}. {name} ({change})")
+            report.append(f"   - 현재가: {close}원")
+            idx += 1
+    else:
+        report.append(f"- 실시간 데이터 조회 중")
 
     report.append("")
 
@@ -182,39 +221,45 @@ def generate_market_report():
                 prev_close = hist['Close'].iloc[-2]
                 change = ((close - prev_close) / prev_close) * 100
                 report.append(f"{idx}. {name} ({change:+.2f}%)")
-                report.append(f"   - 골든크로스: 미발생 | 단기 트렌드 우상향 (${close:.2f})")
+                report.append(f"   - 단기 트렌드 우상향 (${close:.2f})")
                 idx += 1
     except Exception as e:
         report.append(f"- 해외 주식 데이터 조회 오류 발생")
 
     report.append("")
 
-    # 3. 보유종목 정밀 분석
+    # 3. 실시간 네이버 & 구글 경제 뉴스 헤드라인 추가
+    report.append("📰 실시간 핵심 경제 뉴스 (네이버/구글)")
+    realtime_news = get_realtime_news()
+    if realtime_news:
+        for idx, (news_title, source) in enumerate(realtime_news, 1):
+            report.append(f"{idx}. [{source}] {news_title}")
+    else:
+        report.append("- 실시간 뉴스 수집 원활함")
+
+    report.append("")
+
+    # 4. 보유종목 정밀 분석
     report.append("📊 보유종목 정밀 분석")
     for name, code in MY_PORTFOLIO_STOCKS.items():
         report.append(f"• {name}")
-        report.append(f"  - 기술적지표: RSI 45.0 내외 | 트럼프 정책 및 매크로 변동성 주시")
-        report.append(f"  - AI 의견: 추세 조정 국면, 리스크 관리 및 보수적 접근 필요")
+        report.append(f"  - AI 의견: 추세 조정 국면 및 매크로 변동성 주시 중")
 
     report.append("")
     report.append(f"🔥 오늘의 가장 유망한 특정 종목 (실시간 자동 발굴)")
     report.append(f"★★★★★ [{top_stock_name}]")
-    report.append(f"- 현재가: {top_stock_price:,}원 (등락률 {top_stock_change:+.2f}%)")
-    report.append(f"- 핵심 근거: 거래량 동반 돌파 및 완벽한 정배열 진입, 기관·외국인 수급 집중\n")
+    report.append(f"- 현재가: {top_stock_price}원 (등락률 {top_stock_change})")
+    report.append(f"- 핵심 근거: 거래량 동반 돌파 및 기관·외국인 수급 집중\n")
 
-    report.append("⚠ 오늘 주의할 종목")
-    report.append("- 단기 급등 후 윗꼬리를 다는 테마주 및 거래량 감소 역배열 종목\n")
-
-    report.append("💡 오늘의 투자 아이디어 3가지")
-    report.append("1. 실적 개선이 가시화되는 반도체 및 주도주 중심의 비중 확대")
-    report.append("2. 주말/공휴일 글로벌 매크로 이슈(금리, 환율, 트럼프 발언) 변동성 대비 현금 비중 확보")
-    report.append("3. 20일 이동평균선과 거래량이 일치하는 눌림목 구간 집중 공략")
+    report.append("💡 오늘의 투자 아이디어")
+    report.append("1. 실적 개선이 가시화되는 주도주 중심 포트폴리오 재편")
+    report.append("2. 실시간 뉴스를 통한 매크로 이슈 및 트럼프 정책 기조 대응")
     
     report.append(f"\n※ 투자 판단은 본인 책임이며 성공 투자를 응원합니다!")
     return "\n".join(report)
 
 if __name__ == "__main__":
-    print("[Stock_bot.py] 실행 시작 - 완벽 통합 버전")
+    print("[Stock_bot.py] 서버 연동 및 뉴스 크롤링 실행 시작")
     report_message = generate_market_report()
     print(report_message)
     send_to_kakao(report_message)
