@@ -2,13 +2,13 @@ name: Stock Multi Briefing Bot
 
 on:
   schedule:
-    # 한국 시간(KST) 기준 하루 4번 정확히 동작하도록 설정
-    - cron: '0 22 * * *'  # 오전 7:00 (KST)
-    - cron: '0 2 * * *'   # 오전 11:00 (KST)
-    - cron: '30 6 * * *'  # 오후 3시 30분 (15:30, KST)
-    - cron: '0 10 * * *'  # 오후 7:00 (KST)
+    # 한국 시간(KST) 기준 하루 4번 정각 실행 매핑 (UTC 기준 변환)
+    - cron: '0 22 * * *'  # 오전 7:00 (KST) [전날 밤 22시 UTC]
+    - cron: '0 2 * * *'   # 오전 11:00 (KST) [새벽 2시 UTC]
+    - cron: '0 7 * * *'   # 오후 4:00 (KST) [아침 7시 UTC]
+    - cron: '0 10 * * *'  # 오후 7:00 (KST) [낮 10시 UTC]
     
-  workflow_dispatch: # GitHub Actions 탭에서 수동 실행 버튼 활성화
+  workflow_dispatch: # GitHub Actions 탭에서 수동 테스트 실행 버튼 활성화
 
 jobs:
   run-briefing-bot:
@@ -28,10 +28,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy pandas requests yfinance beautifulsoup4 lxml
+          pip install numpy pandas requests yfinance beautifulsoup4 lxml pykrx
 
       - name: Run stock bot script
         run: |
           python stock_bot.py
         env:
           TZ: Asia/Seoul
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
