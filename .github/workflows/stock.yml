@@ -25,4 +25,4 @@ jobs:
         env:
           PLAYMCP_WEBHOOK_URL: ${{ secrets.PLAYMCP_WEBHOOK_URL }}
         run: |
-          python stock-briefing/Stock_bot.py
+          find . -name "Stock_bot.py" -exec python {} \;
