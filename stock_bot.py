@@ -5,10 +5,10 @@ import requests
 import yfinance as yf
 
 # ==========================================================
-# 1. 카카오 API 설정 (토큰 및 키 완벽 반영)
+# 1. 카카오 API 설정 (GitHub Secrets 환경변수 연동)
 # ==========================================================
-REST_API_KEY = "2e2432752d3bcaaf637aa44cfb75a555"
-REFRESH_TOKEN = "tYj7C7ae3SzwEzX8hj_tgHGfUA-p1MP3AAAAAgoXEi0AAAGfy0UaLbj01SImjvGc"
+REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa44cfb75a555")
+REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN", "SEB-3upB-Ex2WOcM-6gizd-SzSnmFZ_PAAAAAgoNFZsAAAGf0Jl5c6j01SImjvGc")
 
 def refresh_access_token():
     """리프레시 토큰을 이용해 새로운 액세스 토큰을 재발급 받는 함수"""
