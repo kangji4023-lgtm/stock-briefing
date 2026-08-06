@@ -8,7 +8,7 @@ import yfinance as yf
 # 1. 카카오 API 설정
 # ==========================================================
 REST_API_KEY = "2e2432752d3bcaaf637aa44cfb75a555"
-REFRESH_TOKEN = "tYj7C7ae3SzwEzX8hj_tgHGfUA-p1MP3AAAAAgoXEi0AAAGfy0UaLbj01SImjvGc"
+REFRESH_TOKEN = "wWN1D_LLRI9rzePTDcq2Ow9rri8NvE7XAAAAAgoXEpYAAAGf1ejxPKj01SImjvGc"
 
 def refresh_access_token():
     url = "https://kauth.kakao.com/oauth/token"
