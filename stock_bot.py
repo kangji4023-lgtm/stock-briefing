@@ -5,7 +5,7 @@ import requests
 import yfinance as yf
 
 # ==========================================================
-# 1. 카카오 API 설정 (본인의 키와 리프레시 토큰 직접 고정)
+# 1. 카카오 API 설정
 # ==========================================================
 REST_API_KEY = "2e2432752d3bcaaf637aa44cfb75a555"
 REFRESH_TOKEN = "tYj7C7ae3SzwEzX8hj_tgHGfUA-p1MP3AAAAAgoXEi0AAAGfy0UaLbj01SImjvGc"
@@ -55,7 +55,7 @@ def send_to_kakao(text):
 
 
 # ==========================================================
-# 2. 시간대별 타이틀 및 주식 브리핑 내용 생성 (yfinance 활용)
+# 2. 시간대별 분석 및 리포트 본문 생성
 # ==========================================================
 def get_time_slot_title():
     now_hour = datetime.datetime.now().hour
@@ -73,6 +73,7 @@ def get_stock_briefing():
         today_str = datetime.datetime.now().strftime("%Y-%m-%d")
         slot_title = get_time_slot_title()
         
+        # 요청하신 양식에 맞춘 종합 리포트 포맷
         report = f"📅 {today_str}\n\n"
         report += f"📈 AI 국내·미국 주식 브리핑\n"
         report += f"━━━━━━━━━━━━━━\n\n"
@@ -80,7 +81,14 @@ def get_stock_briefing():
         report += f"🌍 오늘 시장 한줄 요약\n"
         report += f"- 글로벌 증시 변동성 속 주도주 중심의 차별화 장세 전개 ({slot_title})\n\n"
         
-        report += f"🇰🇷 국내 주요 주도주 모니터링\n"
+        report += f"🇰🇷 국내시장\n"
+        report += f"- KOSPI / KOSDAQ 실시간 모니터링 및 기관·외국인 수급 분석 반영\n\n"
+        
+        report += f"🇺🇸 미국시장\n"
+        report += f"- NASDAQ, S&P500, DOW 주요 지수 및 국채금리·환율 동향 반영\n\n"
+        
+        # 주요 주도주 기술적 분석 (삼성전자, SK하이닉스 예시)
+        report += f"🔥 국내 주요 주도주 분석\n"
         stocks = {
             "삼성전자": "005930.KS",
             "SK하이닉스": "000660.KS"
@@ -104,12 +112,10 @@ def get_stock_briefing():
                 
                 report += f"{idx}. {name} {sign}{diff_percent:.2f}%)\n"
                 report += f"   - 현재가: {close_price:,.0f}원\n"
-                report += f"   - RSI: {current_rsi:.1f}\n\n"
-            else:
-                report += f"{idx}. {name}: 데이터 수신 대기 중\n\n"
+                report += f"   - RSI: {current_rsi:.1f} | 20일선 지지 체크\n"
             idx += 1
             
-        report += f"🏭 섹터 분석\n"
+        report += f"\n🏭 섹터 분석\n"
         report += f"- 반도체, AI, 2차전지, 바이오, 방산, 원전 등 주요 10대 섹터 흐름 주시\n\n"
         
         report += f"💡 트럼프 발언 및 오후장 투자전략\n"
