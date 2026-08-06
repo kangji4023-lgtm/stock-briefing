@@ -28,7 +28,7 @@ TARGET_KR_STOCKS = {
 US_TICKERS = ["TSLA", "GOOGL", "NVDA", "AMD", "INTC"]
 
 # ==========================================
-# 2. 카카오톡 분할 전송 모듈
+# 2. 카카오톡 안정 전송 모듈 (오류 수정 완료)
 # ==========================================
 def refresh_access_token():
     url = "https://kauth.kakao.com/oauth/token"
@@ -59,18 +59,24 @@ def send_kakao_message(text):
         "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
     }
 
-    payload = {
+    template_object = {
         "object_type": "text",
-        "text": text,
+        "text": text
     }
-    data = {"template_object": json.dumps(payload)}
+
+    data = {
+        "template_object": json.dumps(template_object, ensure_ascii=False)
+    }
+
     try:
         response = requests.post(url, headers=headers, data=data, timeout=10)
         if response.status_code != 200:
             print(f"전송 실패: {response.text}")
+        else:
+            print("카카오톡 메시지 전송 성공!")
     except Exception as e:
         print(f"메시지 전송 예외: {e}")
-    time.sleep(1.0) # 메시지 간 간격 유지
+    time.sleep(1.0)
 
 # ==========================================
 # 3. 기술적 지표 계산 모듈
@@ -167,9 +173,7 @@ def run_job():
     kr_results = get_korea_stock_data()
     us_results = get_usa_stock_data()
 
-    # ------------------------------------------
-    # [파트 1] 시장 요약 및 거시경제 / 국내증시
-    # ------------------------------------------
+    # 파트 1
     part1 = f"📅 {today_str}\n"
     part1 += "📈 AI 주식 브리핑 (1/3)\n"
     part1 += "━━━━━━━━━━━━━━\n\n"
@@ -188,9 +192,7 @@ def run_job():
     
     send_kakao_message(part1)
 
-    # ------------------------------------------
-    # [파트 2] 미국증시 및 섹터 분석 / 수급
-    # ------------------------------------------
+    # 파트 2
     part2 = f"📅 {today_str}\n"
     part2 += "📈 AI 주식 브리핑 (2/3)\n"
     part2 += "━━━━━━━━━━━━━━\n\n"
@@ -208,9 +210,7 @@ def run_job():
 
     send_kakao_message(part2)
 
-    # ------------------------------------------
-    # [파트 3] 추천 종목 및 투자 전략 / 리스크
-    # ------------------------------------------
+    # 파트 3
     part3 = f"📅 {today_str}\n"
     part3 += "📈 AI 주식 브리핑 (3/3)\n"
     part3 += "━━━━━━━━━━━━━━\n\n"
