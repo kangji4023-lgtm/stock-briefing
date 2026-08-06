@@ -1,5 +1,3 @@
-import schedule
-import time
 import requests
 import datetime
 import json
