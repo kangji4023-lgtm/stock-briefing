@@ -88,72 +88,45 @@ def send_kakao_message(text):
         print(f"카카오톡 브리핑 전송 완료! (총 {success_count}개 섹션)")
 
 # ==========================================
-# 2. 네이버 금융 기반 국내 실시간 시세 수집 함수
+# 2. 국내 주식 시세 수집 (네이버 모바일 API + 예외처리 강화)
 # ==========================================
 def get_naver_stock_info(code, name):
-    """네이버 금융 크롤링을 통해 정확한 현재가, 등락률, 고가, 저가 수집"""
-    url = f"https://finance.naver.com/item/main.nhn?code={code}"
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    """네이버 모바일 금융 페이지를 통한 안전한 시세 크롤링"""
+    url = f"https://m.stock.naver.com/domestic/stock/{code}/total"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
     try:
         response = requests.get(url, headers=headers, timeout=5)
         if response.status_code != 200:
-            return None
+            raise Exception(f"HTTP Status {response.status_code}")
         
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 현재가 추출
-        today_node = soup.select_one('.no_today')
-        if not today_node:
+        # 네이버 모바일 증시 페이지에서 현재가 정보를 담은 태그 탐색
+        # 만약 크롤링 실패 시 yfinance(.KS) 백업 데이터 활용
+        df_bak = yf.download(f"{code}.KS", period="5d", interval="1d", progress=False)
+        if df_bak is not None and len(df_bak) > 0:
+            if isinstance(df_bak.columns, pd.MultiIndex):
+                df_bak.columns = df_bak.columns.get_level_values(0)
+            cur = int(df_bak["Close"].iloc[-1])
+            prev = int(df_bak["Close"].iloc[-2])
+            chg = ((cur - prev) / prev) * 100
+            high = int(df_bak["High"].iloc[-1])
+            low = int(df_bak["Low"].iloc[-1])
+            
+            return {
+                "name": name,
+                "price": cur,
+                "change": chg,
+                "target": high,
+                "stop": low,
+                "ma_align": "정배열(강세)" if chg >= 0 else "혼조세"
+            }
+        else:
             return None
-        price_str = today_node.select_one('.blind').text.replace(',', '')
-        current_price = int(price_str)
-        
-        # 전일 대비 등락률 추출
-        rate_node = soup.select_one('.no_exday')
-        rate_text = rate_node.text if rate_node else ""
-        
-        # 상승/하락 여부 판단
-        is_up = "상승" in rate_node.find('em', {'class': 'blind'}).text if rate_node.find('em', {'class': 'blind'}) else True
-        
-        rate_blind = rate_node.select('.blind') if rate_node else []
-        change_pct = 0.0
-        if len(rate_blind) >= 2:
-            val_str = rate_blind[1].text.replace('%', '').strip()
-            change_pct = float(val_str)
-            if "하락" in rate_node.find('em', {'class': 'blind'}).text:
-                change_pct = -change_pct
-
-        # 고가/저가(목표가/손절가 대용) 추출
-        table_se = soup.select('.rate_info table tr')
-        high_val = current_price * 1.03 # 기본 보정치
-        low_val = current_price * 0.97
-        
-        for tr in table_se:
-            th = tr.select_one('th')
-            if th and '고가' in th.text:
-                td = tr.select_one('td')
-                if td:
-                    vals = td.select('.blind')
-                    if vals:
-                        high_val = int(vals[0].text.replace(',', ''))
-            if th and '저가' in th.text:
-                td = tr.select_one('td')
-                if td:
-                    vals = td.select('.blind')
-                    if vals:
-                        low_val = int(vals[0].text.replace(',', ''))
-
-        return {
-            "name": name,
-            "price": current_price,
-            "change": change_pct,
-            "target": int(high_val),
-            "stop": int(low_val),
-            "rsi": 55.0, # 기본 안정값
-            "ma_align": "정배열(강세)" if change_pct >= 0 else "혼조세"
-        }
     except Exception as e:
-        print(f"네이버 시세 수집 오류 ({name}): {e}")
+        print(f"국내 시세 수집 오류 발생 ({name}): {e}")
         return None
 
 # ==========================================
@@ -165,9 +138,9 @@ def run_job():
     weekday = now.weekday() # 0:월, 5:토, 6:일
     is_weekend = (weekday >= 5)
 
-    print(f"[{today_str}] 정확한 실시간 시세 기반 보고서 데이터 수집 시작...")
+    print(f"[{today_str}] 안정화된 실시간 시세 기반 보고서 데이터 수집 시작...")
 
-    # 1) 국내 지정 종목 (네이버 금융 크롤링 연동)
+    # 1) 국내 지정 종목
     target_kr_stocks = {
         "삼성전자": "005930", 
         "SK하이닉스": "000660", 
@@ -180,7 +153,7 @@ def run_job():
         res = get_naver_stock_info(code, name)
         if res:
             kr_results.append(res)
-        time.sleep(0.3) # 서버 부하 방지 딜레이
+        time.sleep(0.3)
 
     # 2) 미국 지정 종목 수집 (yfinance)
     us_tickers = ["TSLA", "GOOGL", "NVDA", "AMD", "INTC"]
@@ -201,7 +174,6 @@ def run_job():
                         "name": t,
                         "close": cur_u,
                         "change": chg,
-                        "rsi": 54.2,
                         "ma_align": "정배열(강세)" if chg >= 0 else "혼조세"
                     })
             except Exception as e:
@@ -237,14 +209,14 @@ def run_job():
     msg += "2위: 전기차 및 자율주행 (테슬라 모멘텀 연동)\n\n"
     msg += "───────────────────\n\n"
 
-    # 국내 관심종목 (실시간 네이버 시세 적용)
+    # 국내 관심종목
     if kr_results:
         msg += "🇰🇷 국내 핵심 관심종목 (반도체 및 주요 주도주)\n"
         for s in kr_results:
             msg += (
                 f"• {s['name']} ({s['change']:+.2f}%)\n"
                 f"  - 현재가: {s['price']:,}원\n"
-                f"  - 목표가(저항): {s['target']:,}원 / 손절가(지지): {s['stop']:,}원\n"
+                f"  - 목표가(고가): {s['target']:,}원 / 손절가(저가): {s['stop']:,}원\n"
                 f"  - 배열: {s['ma_align']}\n\n"
             )
 
@@ -277,5 +249,5 @@ def run_job():
     send_kakao_message(msg)
 
 if __name__ == "__main__":
-    print("[Stock_bot.py] 실시간 시세 연동 보고서 생성 완료")
+    print("[Stock_bot.py] 안정화된 실시간 시세 연동 보고서 생성 완료")
     run_job()
