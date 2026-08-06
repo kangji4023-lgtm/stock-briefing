@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
-from pykrx import stock
 import warnings
 
 # 불필요한 경고 차단
@@ -91,7 +90,7 @@ def send_kakao_message(text):
 # 2. 기술적 지표 계산 함수
 # ==========================================
 def calculate_technical_indicators(df):
-    """이동평균선, 골든크로스, MACD, RSI, 저항/지지선 계산"""
+    """이동평균선, 골든크로스, MACD, RSI 계산"""
     if df is None or len(df) < 60:
         return df
         
@@ -123,7 +122,6 @@ def calculate_technical_indicators(df):
     rs = gain / loss
     df["RSI"] = 100 - (100 / (1 + rs))
 
-    df["Vol_Increase"] = df["Volume"] > df["Volume"].shift(1)
     return df
 
 # ==========================================
@@ -135,27 +133,26 @@ def run_job():
     weekday = now.weekday() # 0:월, 5:토, 6:일
     is_weekend = (weekday >= 5)
 
-    print(f"[{today_str}] 맞춤형 주식 보고서 데이터 수집 시작...")
+    print(f"[{today_str}] 맞춤형 주식 보고서 데이터 수집 시작 (yfinance 안정 모드)...")
 
-    try:
-        kr_date = stock.get_nearest_business_day_in_a_week(now.strftime("%Y%m%d"))
-    except Exception:
-        kr_date = now.strftime("%Y%m%d")
-
-    # 1) 지정 보유종목 및 국내 반도체 주도주 분석
+    # 1) 국내 지정 종목 분석 (yfinance 티커 활용: 삼성전자=005930.KS 등)
     target_stocks = {
-        "삼성전자": "005930", 
-        "SK하이닉스": "000660", 
-        "삼성전기": "009155", 
-        "SK스퀘어": "402340", 
-        "현대차": "005380"
+        "삼성전자": "005930.KS", 
+        "SK하이닉스": "000660.KS", 
+        "삼성전기": "009155.KS", 
+        "SK스퀘어": "402340.KS", 
+        "현대차": "005380.KS"
     }
     my_results = []
+    
     for name, code in target_stocks.items():
         try:
-            start_date = (now - datetime.timedelta(days=120)).strftime("%Y%m%d")
-            df_m = stock.get_market_ohlcv_by_date(start_date, kr_date, code)
+            df_m = yf.download(code, period="3mo", interval="1d", progress=False)
             if df_m is not None and len(df_m) > 20:
+                # yfinance 멀티인덱스 컬럼 대응
+                if isinstance(df_m.columns, pd.MultiIndex):
+                    df_m.columns = df_m.columns.get_level_values(0)
+                
                 df_m = calculate_technical_indicators(df_m)
                 cur = int(df_m["Close"].iloc[-1])
                 prev = int(df_m["Close"].iloc[-2])
@@ -174,7 +171,8 @@ def run_job():
                     "rsi": rsi_val,
                     "ma_align": ma_align
                 })
-        except:
+        except Exception as e:
+            print(f"국내 종목({name}) 수집 중 예외: {e}")
             continue
 
     # 2) 미국 지정 종목 분석 (Tesla, Alphabet + 반도체 대표 NVDA)
@@ -186,6 +184,8 @@ def run_job():
             try:
                 df_u = data_us[t].dropna()
                 if len(df_u) > 20:
+                    if isinstance(df_u.columns, pd.MultiIndex):
+                        df_u.columns = df_u.columns.get_level_values(0)
                     df_u = calculate_technical_indicators(df_u)
                     chg = ((df_u["Close"].iloc[-1] - df_u["Close"].iloc[-2]) / df_u["Close"].iloc[-2]) * 100
                     us_results.append({
@@ -206,7 +206,7 @@ def run_job():
     msg = f"📅 {today_str} AI 프리미엄 주식 보고서\n"
     msg += "━━━━━━━━━━━━━━━━━━━\n\n"
 
-    # 주말 및 휴일 특별 섹션 (전일 마감, 주말 이슈, 트럼프 발언 등 반영)
+    # 주말 및 휴일 특별 섹션 반영
     if is_weekend or weekday == 0:
         msg += "🏛️ [주말/휴일 글로벌 증시 및 매크로 점검]\n"
         msg += "• 전일 마감 증시: 글로벌 주요 지수 방어 및 관망세 유지\n"
