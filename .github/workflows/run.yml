@@ -1,41 +1,31 @@
-name: Stock Multi Briefing Bot
+name: Run Stock Bot Multi-Time
 
 on:
   schedule:
-    # 한국 시간(KST) 기준 하루 4번 정각 실행 매핑 (UTC 기준 변환)
-    - cron: '0 22 * * *'  # 오전 7:00 (KST) [전날 밤 22시 UTC]
-    - cron: '0 2 * * *'   # 오전 11:00 (KST) [새벽 2시 UTC]
-    - cron: '0 7 * * *'   # 오후 4:00 (KST) [아침 7시 UTC]
-    - cron: '0 10 * * *'  # 오후 7:00 (KST) [낮 10시 UTC]
-    
-  workflow_dispatch: # GitHub Actions 탭에서 수동 테스트 실행 버튼 활성화
+    # KST 기준: 아침 7시(22: UTC), 오전 11시(02: UTC), 오후 4시(07: UTC), 오후 7시(10: UTC)
+    - cron: '22 21,1,6,9 * * *'
+  workflow_dispatch:
 
 jobs:
-  run-briefing-bot:
+  build:
     runs-on: ubuntu-latest
-    env:
-      TZ: Asia/Seoul
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy pandas requests yfinance beautifulsoup4 lxml pykrx
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Run stock bot script
+      - name: Run stock bot
+        env:
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
         run: |
           python stock_bot.py
-        env:
-          TZ: Asia/Seoul
-          KAKAO_REST_API_KEY: '3c9a29d58ca8030c4e9a119d4249e305'
-          KAKAO_REFRESH_TOKEN: 'SEB-3upB-Ex2WOcM-6gizd-SzSnmFZ_PAAAAAgoNFZsAAAGf0Jl5c6j01SImjvGc'
-          KRX_ID: 'dmswl904'
-          KRX_PW: 'kang402300*'
