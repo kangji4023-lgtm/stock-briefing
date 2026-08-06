@@ -27,3 +27,9 @@ jobs:
 
       - name: Run stock briefing script
         run: python stock_bot.py
+
+      - name: Run stock briefing script
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
+        run: python stock_bot.py
