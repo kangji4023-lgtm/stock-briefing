@@ -5,10 +5,10 @@ import requests
 import yfinance as yf
 
 # ==========================================================
-# 1. 카카오 API 설정
+# 1. 카카오 API 설정 (가장 최근에 발급받은 리프레시 토큰 입력)
 # ==========================================================
 REST_API_KEY = "2e2432752d3bcaaf637aa44cfb75a555"
-REFRESH_TOKEN = "tYj7C7ae3SzwEzX8hj_tgHGfUA-p1MP3AAAAAgoXEi0AAAGfy0UaLbj01SImjvGc"
+REFRESH_TOKEN = "여기에_최신_리프레시_토큰을_입력하세요"
 
 def refresh_access_token():
     url = "https://kauth.kakao.com/oauth/token"
@@ -55,7 +55,7 @@ def send_to_kakao(text):
 
 
 # ==========================================================
-# 2. 시간대별 분석 및 리포트 본문 생성
+# 2. 브리핑 내용 생성 및 시간대별 설정
 # ==========================================================
 def get_time_slot_title():
     now_hour = datetime.datetime.now().hour
@@ -73,7 +73,6 @@ def get_stock_briefing():
         today_str = datetime.datetime.now().strftime("%Y-%m-%d")
         slot_title = get_time_slot_title()
         
-        # 요청하신 양식에 맞춘 종합 리포트 포맷
         report = f"📅 {today_str}\n\n"
         report += f"📈 AI 국내·미국 주식 브리핑\n"
         report += f"━━━━━━━━━━━━━━\n\n"
@@ -87,7 +86,6 @@ def get_stock_briefing():
         report += f"🇺🇸 미국시장\n"
         report += f"- NASDAQ, S&P500, DOW 주요 지수 및 국채금리·환율 동향 반영\n\n"
         
-        # 주요 주도주 기술적 분석 (삼성전자, SK하이닉스 예시)
         report += f"🔥 국내 주요 주도주 분석\n"
         stocks = {
             "삼성전자": "005930.KS",
@@ -103,7 +101,6 @@ def get_stock_briefing():
                 diff_percent = ((close_price - prev_price) / prev_price) * 100
                 sign = "(+ " if diff_percent > 0 else "("
                 
-                # RSI 계산
                 delta = df['Close'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
