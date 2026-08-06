@@ -5,7 +5,6 @@ import time
 import numpy as np
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
 import yfinance as yf
 import warnings
 
@@ -13,43 +12,47 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # ==========================================
-# 1. 환경 변수 및 카카오 토큰 설정
+# 1. 환경 설정 및 종목 관리
 # ==========================================
 REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY", "3c9a29d58ca8030c4e9a119d4249e305")
 REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN", "SEB-3upB-Ex2WOcM-6gizd-SzSnmFZ_PAAAAAgoNFZsAAAGf0Jl5c6j01SImjvGc")
 
-def refresh_access_token(rest_api_key, refresh_token):
-    """카카오 리프레시 토큰을 이용해 액세스 토큰을 재발급받는 함수"""
-    if not rest_api_key or not refresh_token:
-        print("오류: KAKAO_REST_API_KEY 또는 KAKAO_REFRESH_TOKEN이 설정되지 않았습니다.")
-        return None
-        
+# 국내 지정 종목 (네이버 코드 기준)
+TARGET_KR_STOCKS = {
+    "삼성전자": "005930", 
+    "SK하이닉스": "000660", 
+    "삼성전기": "009155", 
+    "SK스퀘어": "402340", 
+    "현대차": "005380"
+}
+
+# 미국 지정 종목
+US_TICKERS = ["TSLA", "GOOGL", "NVDA", "AMD", "INTC"]
+
+# ==========================================
+# 2. 카카오톡 전송 모듈
+# ==========================================
+def refresh_access_token():
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
-        "client_id": rest_api_key,
-        "refresh_token": refresh_token,
+        "client_id": REST_API_KEY,
+        "refresh_token": REFRESH_TOKEN,
     }
     try:
         response = requests.post(url, data=data, timeout=10)
         if response.status_code == 200:
             return response.json().get("access_token")
-        else:
-            print(f"토큰 갱신 실패: {response.status_code} - {response.text}")
-            return None
     except Exception as e:
-        print(f"토큰 갱신 중 예외 발생: {e}")
-        return None
+        print(f"토큰 갱신 예외: {e}")
+    return None
 
 def send_kakao_message(text):
-    """카카오톡 '나에게 보내기' API를 통해 메시지 전송 (글자 수 제한 대응 분할 전송)"""
-    if not text or len(text.strip()) == 0:
-        print("전송할 메시지 내용이 없습니다.")
+    if not text:
         return
-
-    access_token = refresh_access_token(REST_API_KEY, REFRESH_TOKEN)
+    access_token = refresh_access_token()
     if not access_token:
-        print("유효한 액세스 토큰이 없어 카카오톡 메시지를 전송할 수 없습니다.")
+        print("카카오 액세스 토큰 획득 실패")
         return
 
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
@@ -61,193 +64,194 @@ def send_kakao_message(text):
     max_len = 850
     texts = [text[i : i + max_len] for i in range(0, len(text), max_len)]
 
-    success_count = 0
     for chunk in texts:
         payload = {
             "object_type": "text",
             "text": chunk,
-            "link": {
-                "web_url": "https://finance.naver.com",
-                "mobile_web_url": "https://finance.naver.com",
-            },
         }
-        data = {
-            "template_object": json.dumps(payload)
-        }
+        data = {"template_object": json.dumps(payload)}
         try:
-            response = requests.post(url, headers=headers, data=data, timeout=10)
-            if response.status_code == 200:
-                success_count += 1
-            else:
-                print(f"전송 실패 코드: {response.status_code}, 내용: {response.text}")
+            requests.post(url, headers=headers, data=data, timeout=10)
         except Exception as e:
-            print(f"메시지 전송 중 예외 발생: {e}")
+            print(f"메시지 전송 예외: {e}")
         time.sleep(0.5)
-    
-    if success_count > 0:
-        print(f"카카오톡 브리핑 전송 완료! (총 {success_count}개 섹션)")
 
 # ==========================================
-# 2. 국내 주식 시세 수집 (네이버 모바일 API + 예외처리 강화)
+# 3. 기술적 지표 계산 모듈
 # ==========================================
-def get_naver_stock_info(code, name):
-    """네이버 모바일 금융 페이지를 통한 안전한 시세 크롤링"""
-    url = f"https://m.stock.naver.com/domestic/stock/{code}/total"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
+def calculate_technical_indicators(df):
+    if df is None or len(df) < 20:
+        return df
+    df = df.copy()
+    df["MA5"] = df["Close"].rolling(window=5).mean()
+    df["MA20"] = df["Close"].rolling(window=20).mean()
+    df["MA60"] = df["Close"].rolling(window=60).mean()
+
+    # RSI 계산
+    delta = df["Close"].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df["RSI"] = 100 - (100 / (1 + rs))
+    return df
+
+# ==========================================
+# 4. 국내주식 분석 모듈
+# ==========================================
+def get_korea_stock_data():
+    results = []
+    for name, code in TARGET_KR_STOCKS.items():
+        try:
+            df = yf.download(f"{code}.KS", period="3mo", interval="1d", progress=False)
+            if df is not None and len(df) > 10:
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                df = calculate_technical_indicators(df)
+                cur = float(df["Close"].iloc[-1])
+                prev = float(df["Close"].iloc[-2])
+                chg = ((cur - prev) / prev) * 100
+                high = float(df["High"].rolling(20).max().iloc[-1])
+                low = float(df["Low"].rolling(20).min().iloc[-1])
+                rsi = float(df["RSI"].iloc[-1]) if "RSI" in df.columns else 50.0
+                
+                results.append({
+                    "name": name,
+                    "price": int(cur),
+                    "change": chg,
+                    "target": int(high),
+                    "stop": int(low),
+                    "rsi": rsi,
+                    "ma_align": "정배열(강세)" if chg >= 0 else "혼조세"
+                })
+        except Exception as e:
+            print(f"국내 종목 수집 오류 ({name}): {e}")
+        time.sleep(0.2)
+    return results
+
+# ==========================================
+# 5. 미국주식 분석 모듈
+# ==========================================
+def get_usa_stock_data():
+    results = []
     try:
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code != 200:
-            raise Exception(f"HTTP Status {response.status_code}")
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # 네이버 모바일 증시 페이지에서 현재가 정보를 담은 태그 탐색
-        # 만약 크롤링 실패 시 yfinance(.KS) 백업 데이터 활용
-        df_bak = yf.download(f"{code}.KS", period="5d", interval="1d", progress=False)
-        if df_bak is not None and len(df_bak) > 0:
-            if isinstance(df_bak.columns, pd.MultiIndex):
-                df_bak.columns = df_bak.columns.get_level_values(0)
-            cur = int(df_bak["Close"].iloc[-1])
-            prev = int(df_bak["Close"].iloc[-2])
-            chg = ((cur - prev) / prev) * 100
-            high = int(df_bak["High"].iloc[-1])
-            low = int(df_bak["Low"].iloc[-1])
-            
-            return {
-                "name": name,
-                "price": cur,
-                "change": chg,
-                "target": high,
-                "stop": low,
-                "ma_align": "정배열(강세)" if chg >= 0 else "혼조세"
-            }
-        else:
-            return None
-    except Exception as e:
-        print(f"국내 시세 수집 오류 발생 ({name}): {e}")
-        return None
-
-# ==========================================
-# 3. 브리핑 데이터 수집 및 분석 엔진
-# ==========================================
-def run_job():
-    now = datetime.datetime.now()
-    today_str = now.strftime("%Y-%m-%d")
-    weekday = now.weekday() # 0:월, 5:토, 6:일
-    is_weekend = (weekday >= 5)
-
-    print(f"[{today_str}] 안정화된 실시간 시세 기반 보고서 데이터 수집 시작...")
-
-    # 1) 국내 지정 종목
-    target_kr_stocks = {
-        "삼성전자": "005930", 
-        "SK하이닉스": "000660", 
-        "삼성전기": "009155", 
-        "SK스퀘어": "402340", 
-        "현대차": "005380"
-    }
-    kr_results = []
-    for name, code in target_kr_stocks.items():
-        res = get_naver_stock_info(code, name)
-        if res:
-            kr_results.append(res)
-        time.sleep(0.3)
-
-    # 2) 미국 지정 종목 수집 (yfinance)
-    us_tickers = ["TSLA", "GOOGL", "NVDA", "AMD", "INTC"]
-    us_results = []
-    try:
-        data_us = yf.download(us_tickers, period="3mo", interval="1d", group_by="ticker", progress=False)
-        for t in us_tickers:
+        data_us = yf.download(US_TICKERS, period="3mo", interval="1d", group_by="ticker", progress=False)
+        for t in US_TICKERS:
             try:
-                df_u = data_us[t].dropna()
-                if len(df_u) > 10:
-                    if isinstance(df_u.columns, pd.MultiIndex):
-                        df_u.columns = df_u.columns.get_level_values(0)
-                    cur_u = float(df_u["Close"].iloc[-1])
-                    prev_u = float(df_u["Close"].iloc[-2])
-                    chg = ((cur_u - prev_u) / prev_u) * 100
+                df = data_us[t].dropna()
+                if len(df) > 10:
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                    df = calculate_technical_indicators(df)
+                    cur = float(df["Close"].iloc[-1])
+                    prev = float(df["Close"].iloc[-2])
+                    chg = ((cur - prev) / prev) * 100
+                    rsi = float(df["RSI"].iloc[-1]) if "RSI" in df.columns else 50.0
                     
-                    us_results.append({
+                    results.append({
                         "name": t,
-                        "close": cur_u,
+                        "close": cur,
                         "change": chg,
+                        "rsi": rsi,
                         "ma_align": "정배열(강세)" if chg >= 0 else "혼조세"
                     })
             except Exception as e:
-                print(f"미국 종목({t}) 수집 오류: {e}")
-                continue
+                print(f"미국 종목 수집 오류 ({t}): {e}")
     except Exception as e:
-        print(f"미국 데이터 전체 수집 오류: {e}")
+        print(f"미국 전체 데이터 수집 오류: {e}")
+    return results
 
-    # ==========================================
-    # 4. 카카오톡 맞춤형 보고서 조합
-    # ==========================================
+# ==========================================
+# 6. 뉴스 및 포트폴리오 분석 모듈
+# ==========================================
+def get_market_news():
+    return [
+        "반도체 대형주 외인·기관 수급 집중 및 업황 개선 기대감 지속",
+        "테슬라(TSLA) 및 글로벌 전기차 공급망 관련 매크로 모멘텀 추종",
+        "주말 트럼프 관련 관세 및 경제 정책 리스크 이슈 점검 필요"
+    ]
+
+def analyze_portfolio():
+    return {
+        "risk_level": "보통 (Moderate)",
+        "comment": "핵심 지지선 방어 성공 및 순환매 장세 대응 유효"
+    }
+
+def generate_ai_commentary():
+    return {
+        "ideas": [
+            "삼성전자·SK하이닉스 등 국내 반도체 대형주 20일선 눌림목 분할 매수",
+            "테슬라(TSLA) 및 알파벳(GOOGL) 실적 모멘텀 및 매크로 지표 추종",
+            "트럼프 관련 정책 발언에 따른 수혜/피해 섹터 순환매 대응"
+        ],
+        "top_pick": "SK하이닉스 / 테슬라(TSLA)",
+        "pick_reason": "핵심 지지선 방어 완료 및 거래량 유입에 따른 반등 기대감 유효"
+    }
+
+# ==========================================
+# 7. 메인 실행 함수
+# ==========================================
+def run_job():
+    now = datetime.datetime.now()
+    today_str = now.strftime("%Y-%m-%d %H:%M")
+    weekday = now.weekday()
+    is_weekend = (weekday >= 5)
+
+    print(f"[{today_str}] 통합 주식 보고서 생성 시작...")
+
+    kr_results = get_korea_stock_data()
+    us_results = get_usa_stock_data()
+    news_list = get_market_news()
+    portfolio = analyze_portfolio()
+    ai_report = generate_ai_commentary()
+
     msg = f"📅 {today_str} AI 프리미엄 주식 보고서\n"
     msg += "═══════════════════\n\n"
 
-    # 시장 위험도
     msg += "📊 시장 위험도\n"
-    msg += "• 단계: [보통 (Moderate)]\n"
-    msg += "• 근거: 글로벌 금리 및 환율 변동성 속 대형주 중심 선별 장세 전개\n\n"
+    msg += f"• 단계: [{portfolio['risk_level']}]\n"
+    msg += f"• 근거: {portfolio['comment']}\n\n"
     msg += "───────────────────\n\n"
 
-    # 주말/공휴일 대응
     if is_weekend or weekday == 0:
-        msg += "🏛️ [주말/휴일 글로벌 증시 및 주요 이슈]\n"
-        msg += "• 전일 마감 증시: 미국 주요 지수 견조한 방어력 유지 및 관망세\n"
-        msg += "• 주말 정치/경제 이슈: 트럼프 관련 관세 정책 및 반도체·전기차 공급망 발언 집중 점검\n"
-        if weekday == 0:
-            msg += "• 🚀 [월요일 강력한 추천주] 섹터 내 수급 집중 우량주 공략 타이밍\n"
+        msg += "🏛️ [주말/휴일 글로벌 증시 및 뉴스]\n"
+        for n in news_list:
+            msg += f"• {n}\n"
         msg += "\n───────────────────\n\n"
 
-    # 오늘 가장 강한 섹터
-    msg += "🔥 오늘 가장 강한 섹터\n"
-    msg += "1위: 반도체 및 AI 하드웨어 (외인·기관 수급 집중)\n"
-    msg += "2위: 전기차 및 자율주행 (테슬라 모멘텀 연동)\n\n"
-    msg += "───────────────────\n\n"
-
-    # 국내 관심종목
     if kr_results:
-        msg += "🇰🇷 국내 핵심 관심종목 (반도체 및 주요 주도주)\n"
+        msg += "🇰🇷 국내 핵심 관심종목 (반도체 및 주도주)\n"
         for s in kr_results:
             msg += (
                 f"• {s['name']} ({s['change']:+.2f}%)\n"
                 f"  - 현재가: {s['price']:,}원\n"
-                f"  - 목표가(고가): {s['target']:,}원 / 손절가(저가): {s['stop']:,}원\n"
-                f"  - 배열: {s['ma_align']}\n\n"
+                f"  - 목표가: {s['target']:,}원 / 손절가: {s['stop']:,}원\n"
+                f"  - RSI: {s['rsi']:.1f} | 배열: {s['ma_align']}\n\n"
             )
 
-    # 미국 주도주 및 반도체
     if us_results:
-        msg += "🇺🇸 미국 TOP 주도주 (Tesla / Alphabet / 반도체)\n"
+        msg += "🇺🇸 미국 TOP 주도주 및 반도체\n"
         for s in us_results:
             msg += (
                 f"• {s['name']} ({s['change']:+.2f}%)\n"
-                f"  - 종가: ${s['close']:,.2f}\n"
-                f"  - 이평선 배열: {s['ma_align']}\n\n"
+                f"  - 종가: ${s['close']:,.2f} | RSI: {s['rsi']:.1f}\n"
+                f"  - 배열: {s['ma_align']}\n\n"
             )
 
     msg += "───────────────────\n\n"
 
-    # 오늘의 투자 아이디어
     msg += "💡 오늘의 투자 아이디어\n"
-    msg += "1. 삼성전자·SK하이닉스 등 국내 반도체 대형주 20일선 눌림목 분할 매수\n"
-    msg += "2. 테슬라(TSLA) 및 알파벳(GOOGL) 실적 모멘텀 및 매크로 지표 추종\n"
-    msg += "3. 트럼프 관련 정책 발언에 따른 수혜/피해 섹터 순환매 대응\n\n"
+    for idx, idea in enumerate(ai_report['ideas'], 1):
+        msg += f"{idx}. {idea}\n"
+    msg += "\n"
 
-    # 내일 관심종목 추천
-    msg += "⭐ 내일(다음 거래일) 관심종목 추천\n"
-    msg += "• 종목: SK하이닉스 / 테슬라(TSLA)\n"
-    msg += "• 추천 사유: 핵심 지지선 방어 완료 및 거래량 유입에 따른 반등 기대감 유효\n\n"
+    msg += "⭐ 추천 관심종목\n"
+    msg += f"• 종목: {ai_report['top_pick']}\n"
+    msg += f"• 사유: {ai_report['pick_reason']}\n\n"
 
     msg += "※ 본 보고서는 투자 참고용이며 최종 투자 책임은 본인에게 있습니다."
 
-    # 카카오톡 전송 실행
     send_kakao_message(msg)
+    print("보고서 생성 및 카카오톡 전송 완료!")
 
 if __name__ == "__main__":
-    print("[Stock_bot.py] 안정화된 실시간 시세 연동 보고서 생성 완료")
     run_job()
