@@ -28,7 +28,7 @@ TARGET_KR_STOCKS = {
 US_TICKERS = ["TSLA", "GOOGL", "NVDA", "AMD", "INTC"]
 
 # ==========================================
-# 2. 카카오톡 안전 전송 모듈 (파싱 오류 원인 제거)
+# 2. 카카오톡 안전 전송 모듈
 # ==========================================
 def refresh_access_token():
     url = "https://kauth.kakao.com/oauth/token"
@@ -59,7 +59,6 @@ def send_kakao_message(text):
         "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"
     }
 
-    # 템플릿 객체 대신 안정적인 기본 텍스트 구조 적용
     template_object = {
         "object_type": "text",
         "text": text,
@@ -125,7 +124,6 @@ def get_korea_stock_data():
                     "price": int(cur),
                     "change": chg,
                     "rsi": rsi,
-                    "ma20": int(df["MA20"].iloc[-1]) if "MA20" in df.columns else int(cur),
                 })
         except Exception as e:
             print(f"국내 종목 수집 오류 ({name}): {e}")
@@ -173,7 +171,6 @@ def run_job():
 
     # 파트 1
     part1 = f"[{today_str} 주식 브리핑 1부]\n\n"
-.strip() + "\n"
     part1 += "1. 시장 요약\n- 반도체 대형주 중심 순환매 장세\n\n"
     part1 += "2. 국내 주요종목\n"
     for s in kr_results:
