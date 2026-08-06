@@ -1,27 +1,27 @@
-name: Run Stock Bot Multi-Time
+name: Run Stock Bot
 
 on:
   schedule:
-    # KST 기준: 아침 7시(22: UTC), 오전 11시(02: UTC), 오후 4시(07: UTC), 오후 7시(10: UTC)
-    - cron: '22 21,1,6,9 * * *'
+    # KST 기준 오전 7시, 11시, 오후 4시, 오후 7시 자동 실행 (UTC 시간 반영)
+    - cron: '0 22,2,7,10 * * *'
   workflow_dispatch:
 
 jobs:
-  build:
+  run-bot:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy pandas yfinance requests
+          pip install requests pandas numpy yfinance
 
       - name: Run stock bot
         env:
