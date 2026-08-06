@@ -67,7 +67,6 @@ def send_kakao_message(text):
 def get_stock_info(ticker, market="kr"):
     try:
         if market == "kr":
-            # pykrx를 이용한 최근 데이터 조회 (종목 코드 기준)
             today_str = datetime.datetime.now().strftime("%Y%m%d")
             start_str = (datetime.datetime.now() - datetime.timedelta(days=150)).strftime("%Y%m%d")
             df = stock.get_market_ohlcv_by_date(start_str, today_str, ticker)
@@ -79,17 +78,14 @@ def get_stock_info(ticker, market="kr"):
             ma20 = close.rolling(window=20).mean().iloc[-1]
             ma60 = close.rolling(window=60).mean().iloc[-1] if len(close) >= 60 else ma20
             
-            # 간단한 지표 계산
-            target_price = current_price * 1.05  # 목표가 +5%
-            stop_loss = current_price * 0.95     # 손절가 -5%
+            target_price = current_price * 1.05  
+            stop_loss = current_price * 0.95     
             
             alignment = "정배열" if ma20 > ma60 else "역배열/혼조"
-            macd_status = "골든크로스 발생" if close.iloc[-1] > ma20 and close.iloc[-2] <= ma20.iloc[-2] if hasattr(ma20, 'iloc') else "유지"
             
             return f"현재가: {current_price:,.0f}원 | 목표가: {target_price:,.0f}원 | 손절가: {stop_loss:,.0f}원 | 20일선: {ma20:,.0f}원 | 배열: {alignment}"
         
         elif market == "us":
-            # yfinance를 이용한 미국 주식 조회
             ticker_obj = yf.Ticker(ticker)
             todays_data = ticker_obj.history(period="3mo")
             if todays_data.empty:
@@ -109,7 +105,6 @@ def get_stock_info(ticker, market="kr"):
 def generate_briefing():
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     
-    # 국내 종목 실시간 조회 (삼성전자, SK하이닉스, 삼성전기, SK스퀘어, 현대차, LS ELECTRIC)
     samsung = get_stock_info("005930", "kr")
     sk_hynix = get_stock_info("000660", "kr")
     samsung_electro = get_stock_info("009150", "kr")
@@ -117,7 +112,6 @@ def generate_briefing():
     hyundai = get_stock_info("005380", "kr")
     ls_electric = get_stock_info("010120", "kr")
     
-    # 미국 종목 실시간 조회 (테슬라 TSLA, 알파벳 ClassA - GOOGL)
     tsla = get_stock_info("TSLA", "us")
     class_a = get_stock_info("GOOGL", "us")
 
