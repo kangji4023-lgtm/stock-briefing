@@ -8,9 +8,9 @@ from pykrx import stock
 import yfinance as yf
 
 # ==========================================
-# 카카오 인증 토큰 직접 설정 (오류 원천 차단)
+# 카카오 인증 정보 설정 (토큰 직접 입력 완료)
 # ==========================================
-REST_API_KEY = "dummy"  # 리프레시 토큰 갱신 시 필수가 아님
+REST_API_KEY = " 여기에 본인의 카카오 REST API 키 입력 "
 REFRESH_TOKEN = "WWN1D_LLRI9rzePTDcq2Ow9rri8NvE7XAAAAAgoXEpYAAAGf1ejxPKj01SImjvGc"
 
 def get_access_token_by_refresh_token():
@@ -18,8 +18,8 @@ def get_access_token_by_refresh_token():
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
-        "client_id": REST_API_KEY,
-        "refresh_token": REFRESH_TOKEN
+        "client_id": REST_API_KEY.strip(),
+        "refresh_token": REFRESH_TOKEN.strip()
     }
     try:
         response = requests.post(url, data=data)
@@ -76,7 +76,6 @@ def send_kakao_message(text):
 def generate_full_briefing():
     today = datetime.now().strftime("%Y-%m-%d")
     
-    # 매크로 지표 수집
     macro_symbols = {"USD/KRW": "USDKRW=X", "국채금리(10년)": "^TNX", "VIX지수": "^VIX", "유가(WTI)": "CL=F"}
     macro_data = {}
     for name, sym in macro_symbols.items():
@@ -90,7 +89,6 @@ def generate_full_briefing():
         except:
             macro_data[name] = "조회 불가"
 
-    # 미국 지수 수집
     us_indices = {"NASDAQ": "^IXIC", "S&P500": "^GSPC", "DOW": "^DJI"}
     us_result_str = ""
     for name, sym in us_indices.items():
@@ -107,7 +105,6 @@ def generate_full_briefing():
         except:
             us_result_str += f"- {name}: 조회 실패\n"
 
-    # 국내 지수 수집 (에러 원천 방어)
     kospi_val, kosdaq_val = "집계 중(휴장일)", "집계 중(휴장일)"
     try:
         krx_date = stock.get_nearest_business_day_in_a_week(datetime.now().strftime("%Y%m%d"))
@@ -118,7 +115,7 @@ def generate_full_briefing():
         if kosdaq_df is not None and not kosdaq_df.empty and len(kosdaq_df) > 0:
             kosdaq_val = f"{kosdaq_df['종가'].iloc[0]:,.2f} ({kosdaq_df['등락률'].iloc[0]:+.2f}%)"
     except Exception as e:
-        print(f"국내 지수 조회 스킵 (휴장일 또는 데이터 없음): {e}")
+        print(f"국내 지수 조회 스킵: {e}")
 
     full_message = f"""📅 {today}
 
