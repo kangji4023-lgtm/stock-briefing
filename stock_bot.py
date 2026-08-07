@@ -8,9 +8,9 @@ from pykrx import stock
 import yfinance as yf
 
 # ==========================================
-# 카카오 인증 정보 설정 (토큰 직접 입력 완료)
+# ⚠️ [수정필요] 아래 따옴표 안에 본인의 실제 카카오 REST API 키를 넣으세요!
 # ==========================================
-REST_API_KEY = " 여기에 본인의 카카오 REST API 키 입력 "
+REST_API_KEY = "2e2432752d3bcaaf637aa44cfb75a555"
 REFRESH_TOKEN = "WWN1D_LLRI9rzePTDcq2Ow9rri8NvE7XAAAAAgoXEpYAAAGf1ejxPKj01SImjvGc"
 
 def get_access_token_by_refresh_token():
@@ -115,7 +115,7 @@ def generate_full_briefing():
         if kosdaq_df is not None and not kosdaq_df.empty and len(kosdaq_df) > 0:
             kosdaq_val = f"{kosdaq_df['종가'].iloc[0]:,.2f} ({kosdaq_df['등락률'].iloc[0]:+.2f}%)"
     except Exception as e:
-        print(f"국내 지수 조회 스킵: {e}")
+        print(f"국내 지수 조회 스킵 (휴장일 또는 데이터 없음): {e}")
 
     full_message = f"""📅 {today}
 
