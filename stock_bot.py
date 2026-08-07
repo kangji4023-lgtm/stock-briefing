@@ -18,7 +18,7 @@ def get_access_token_by_refresh_token():
     global REFRESH_TOKEN
     
     if not REST_API_KEY or not REFRESH_TOKEN:
-        print("카카오 REST_API_KEY 또는 REFRESH_TOKEN이 설정되지 않았습니다.")
+        print("카카오 REST_API_KEY 또는 REFRESH_TOKEN이 GitHub Secrets에 설정되지 않았습니다.")
         return None
 
     url = "https://kauth.kakao.com/oauth/token"
@@ -69,6 +69,8 @@ def send_kakao_message(text):
             response = requests.post(kakao_url, headers=header, data=data)
             if response.status_code != 200:
                 print(f"카카오 전송 실패: {response.text}")
+            else:
+                print("카카오톡 메시지 전송 성공!")
         except Exception as e:
             print(f"카카오 전송 에러: {e}")
         time.sleep(0.5)
@@ -79,10 +81,9 @@ def send_kakao_message(text):
 def generate_full_briefing():
     today = datetime.now().strftime("%Y-%m-%d")
     
-    # 안정적인 티커로 변경 (WTI유: BZ=X 또는 유가 관련 지표)
+    # 안정적인 거시경제 지표 티커 설정
     macro_symbols = {
         "USD/KRW": "USDKRW=X",
-        "WTI유": "BZ=X",
         "국채금리(10년)": "^TNX",
         "VIX지수": "^VIX"
     }
@@ -91,7 +92,7 @@ def generate_full_briefing():
         try:
             t = yf.Ticker(sym)
             hist = t.history(period="2d")
-            if not hist.empty:
+            if not hist.empty and len(hist) >= 1:
                 macro_data[name] = f"{hist['Close'].iloc[-1]:,.2f}"
             else:
                 macro_data[name] = "데이터 없음"
@@ -104,7 +105,7 @@ def generate_full_briefing():
         try:
             t = yf.Ticker(sym)
             hist = t.history(period="2d")
-            if not hist.empty:
+            if not hist.empty and len(hist) >= 2:
                 cur = hist['Close'].iloc[-1]
                 prev = hist['Close'].iloc[-2]
                 rate = ((cur - prev) / prev) * 100
@@ -114,19 +115,19 @@ def generate_full_briefing():
         except:
             us_result_str += f"- {name}: 조회 실패\n"
 
-    # pykrx 안전 조회
+    # pykrx 안전 조회 (에러 방어)
     kospi_val = "집계 중"
     kosdaq_val = "집계 중"
     try:
         krx_date = stock.get_nearest_business_day_in_a_week(datetime.now().strftime("%Y%m%d"))
         kospi_df = stock.get_index_price_change_by_ticker(krx_date, krx_date, "1001")
         kosdaq_df = stock.get_index_price_change_by_ticker(krx_date, krx_date, "2001")
-        if not kospi_df.empty:
+        if kospi_df is not None and not kospi_df.empty:
             kospi_val = f"{kospi_df['종가'].iloc[0]:,.2f} ({kospi_df['등락률'].iloc[0]:+.2f}%)"
-        if not kosdaq_df.empty:
+        if kosdaq_df is not None and not kosdaq_df.empty:
             kosdaq_val = f"{kosdaq_df['종가'].iloc[0]:,.2f} ({kosdaq_df['등락률'].iloc[0]:+.2f}%)"
     except Exception as e:
-        print(f"국내 지수 조회 예외: {e}")
+        print(f"국내 지수 조회 예외 발생: {e}")
 
     full_message = f"""📅 {today}
 
@@ -147,7 +148,6 @@ def generate_full_briefing():
 ━━━━━━━━━━━━━━
 📊 거시경제 지표
 - 환율(USD/KRW): {macro_data.get('USD/KRW', 'N/A')}
-- 브렌트유(WTI): {macro_data.get('WTI유', 'N/A')}
 - 미국채 10년물 금리: {macro_data.get('국채금리(10년)', 'N/A')}
 - VIX 공포지수: {macro_data.get('VIX지수', 'N/A')}
 
