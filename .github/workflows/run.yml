@@ -1,4 +1,4 @@
-name: Send Stock Briefing
+uname: Send Stock Briefing
 
 on:
   schedule:
@@ -23,4 +23,4 @@ jobs:
           pip install requests yfinance pykrx pytz pandas numpy
 
       - name: Run stock briefing script
-        run: python main.py  # 본인이 저장한 파이썬 파일명으로 수정하세요 (예: main.py)
+        run: python stock_bot.py  # 본인이 저장한 파이썬 파일명으로 수정하세요 (예: main.py)
