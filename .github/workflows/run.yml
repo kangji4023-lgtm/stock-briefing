@@ -1,13 +1,15 @@
 name: run-bot
 
 on:
-  workflow_dispatch: # 수동 실행 가능하도록 설정
+  workflow_dispatch: # 수동 실행 가능
   schedule:
-    - cron: '0 0 * * *' # 필요에 따라 주기 설정
+    # 매일 아침, 오전, 오후, 저녁 등 필요에 따라 크론 설정 (예: 매일 오전 7시, 11시, 오후 4시, 7시)
+    - cron: '0 22,2,7,10 * * *' 
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -19,11 +21,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests
+          python -m pip install --upgrade pip
+          pip install requests pykrx yfinance pandas
 
       - name: Run stock briefing script
         env:
           KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
         run: |
           python stock_bot.py
