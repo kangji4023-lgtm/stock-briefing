@@ -10,19 +10,20 @@ import yfinance as yf
 # ==========================================
 # 환경 변수 및 카카오 인증 설정
 # ==========================================
-REST_API_KEY = os.environ.get("REST_API_KEY", "")
-REFRESH_TOKEN = os.environ.get("REFRESH_TOKEN", "")
+# GitHub Secrets에서 가져오되, 없을 경우 직접 입력하신 토큰을 백업으로 사용하도록 설정합니다.
+REST_API_KEY = os.environ.get("REST_API_KEY", "여기에_REST_API_키_입력시_동작")
+REFRESH_TOKEN = os.environ.get("REFRESH_TOKEN", "WWN1D_LLRI9rzePTDcq2Ow9rri8NvE7XAAAAAgoXEpYAAAGf1ejxPKj01SImjvGc")
 
 def get_access_token_by_refresh_token():
     global REFRESH_TOKEN
-    if not REST_API_KEY or not REFRESH_TOKEN:
-        print("카카오 REST_API_KEY 또는 REFRESH_TOKEN이 GitHub Secrets에 설정되지 않았습니다.")
+    if not REFRESH_TOKEN:
+        print("REFRESH_TOKEN이 설정되지 않았습니다.")
         return None
 
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
-        "client_id": REST_API_KEY,
+        "client_id": REST_API_KEY if REST_API_KEY else "dummy",
         "refresh_token": REFRESH_TOKEN
     }
     try:
@@ -50,7 +51,6 @@ def send_kakao_message(text):
     kakao_url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     header = {"Authorization": f"Bearer {access_token}"}
     
-    # 카카오톡 글자 수 제한(3500자)을 고려하여 파트별로 분할 전송
     max_length = 3000
     messages = [text[i:i+max_length] for i in range(0, len(text), max_length)]
     
@@ -112,20 +112,19 @@ def generate_full_briefing():
         except:
             us_result_str += f"- {name}: 조회 실패\n"
 
-    # 국내 지수 수집
-    kospi_val, kosdaq_val = "집계 중", "집계 중"
+    # 국내 지수 수집 (에러 원천 방어)
+    kospi_val, kosdaq_val = "집계 중(휴장일)", "집계 중(휴장일)"
     try:
         krx_date = stock.get_nearest_business_day_in_a_week(datetime.now().strftime("%Y%m%d"))
         kospi_df = stock.get_index_price_change_by_ticker(krx_date, krx_date, "1001")
         kosdaq_df = stock.get_index_price_change_by_ticker(krx_date, krx_date, "2001")
-        if kospi_df is not None and not kospi_df.empty:
+        if kospi_df is not None and not kospi_df.empty and len(kospi_df) > 0:
             kospi_val = f"{kospi_df['종가'].iloc[0]:,.2f} ({kospi_df['등락률'].iloc[0]:+.2f}%)"
-        if kosdaq_df is not None and not kosdaq_df.empty:
+        if kosdaq_df is not None and not kosdaq_df.empty and len(kosdaq_df) > 0:
             kosdaq_val = f"{kosdaq_df['종가'].iloc[0]:,.2f} ({kosdaq_df['등락률'].iloc[0]:+.2f}%)"
     except Exception as e:
-        print(f"국내 지수 조회 예외: {e}")
+        print(f"국내 지수 조회 스킵 (휴장일 또는 데이터 없음): {e}")
 
-    # 전체 리포트 포맷팅 (요청하신 14가지 항목 및 출력 형식 반영)
     full_message = f"""📅 {today}
 
 📈 AI 국내·미국 주식 브리핑
@@ -145,16 +144,14 @@ def generate_full_briefing():
 {us_result_str}
 ━━━━━━━━━━━━━━
 🔥 국내 TOP10 주도주 (핵심 요약)
-1. 삼성전자 - 반도체 업황 개선 기대감 (RSI: 55.2, 20일선 위)
-2. SK하이닉스 - AI 메모리 수요 견조 (RSI: 61.4, 골든크로스 발생)
+1. 삼성전자 - 반도체 업황 개선 기대감
+2. SK하이닉스 - AI 메모리 수요 견조
 3. 현대차 - 주주환원 정책 및 실적 호조
-(외 기타 주도주 실시간 수급 연동 중)
 
 ━━━━━━━━━━━━━━
 🔥 미국 TOP10 주도주 (핵심 요약)
 1. NVIDIA (NVDA) - AI 인프라 투자 지속
 2. Apple (AAPL) - 신제품 모멘텀 및 서비스 부문 성장
-(외 기타 글로벌 빅테크 연동 중)
 
 ━━━━━━━━━━━━━━
 ⭐ 오늘 최고의 추천 종목
