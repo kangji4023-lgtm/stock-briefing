@@ -2,9 +2,9 @@ name: Send Stock Briefing
 
 on:
   schedule:
-    # KST 기준 아침 7시(22:00 UTC), 11시(02:00 UTC), 오후 4시(07:00 UTC), 저녁 7시(10:00 UTC) 설정
+    # KST 기준 아침 7시, 11시, 오후 4시, 저녁 7시 자동 실행 설정
     - cron: '22 21,1,6,9 * * *'
-  workflow_dispatch: # 수동으로도 실행 가능
+  workflow_dispatch: # 깃허브 웹에서 수동 실행 버튼 제공
 
 jobs:
   build:
@@ -23,4 +23,4 @@ jobs:
           pip install requests yfinance pykrx pytz pandas numpy
 
       - name: Run stock briefing script
-        run: python get_token.py  # 실행할 파이썬 파일 이름 (예: main.py 등 본인 파일명으로 수정)
+        run: python main.py  # 본인이 저장한 파이썬 파일명으로 수정하세요 (예: main.py)
