@@ -1,3 +1,5 @@
+name: Stock Briefing Bot
+
 on:
   schedule:
     # 한국 시간 아침 7시, 오전 11시, 오후 4시, 오후 7시 자동 실행 (UTC 기준 변환)
@@ -7,7 +9,6 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,4 +27,6 @@ jobs:
         env:
           KRX_ID: ${{ secrets.KRX_ID }}
           KRX_PW: ${{ secrets.KRX_PW }}
+          KAKAO_CLIENT_ID: ${{ secrets.KAKAO_CLIENT_ID }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
         run: python stock_bot.py
