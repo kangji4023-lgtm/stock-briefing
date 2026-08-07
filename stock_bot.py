@@ -11,7 +11,7 @@ import yfinance as yf
 # ⚠️ [수정필요] 아래 따옴표 안에 본인의 실제 카카오 REST API 키를 넣으세요!
 # ==========================================
 REST_API_KEY = "2e2432752d3bcaaf637aa44cfb75a555"
-REFRESH_TOKEN = "WWN1D_LLRI9rzePTDcq2Ow9rri8NvE7XAAAAAgoXEpYAAAGf1ejxPKj01SImjvGc"
+REFRESH_TOKEN = "Pu-B2xW7jCGuYmeZsz2GC2B8_xM4bk73AAAAAgoXBi4AAAGf208W5Kj01SImjvGc"
 
 def get_access_token_by_refresh_token():
     global REFRESH_TOKEN
