@@ -1,16 +1,15 @@
-name: Stock Briefing Bot
+name: Stock Bot Daily Automation
 
 on:
   schedule:
-    - cron: '0 22,2 * * *'  # 한국 시간 오전 7시, 11시 (UTC 기준)
-    - cron: '0 7,10 * * *'  # 한국 시간 오후 4시, 7시 (UTC 기준)
-  
-  workflow_dispatch:  # 수동 실행 버튼 활성화
+    # KST 기준 07:00, 11:00, 16:00, 19:00 (UTC 기준 22, 2, 7, 10시)
+    - cron: '0 22,2,7,10 * * *'
+  workflow_dispatch:
 
 jobs:
-  run-bot:
+  run-stock-bot:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,7 +22,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pykrx yfinance
+          pip install requests pandas numpy pykrx yfinance
 
       - name: Run stock briefing script
-        run: python stock_bot.py
+        env:
+          REST_API_KEY: ${{ secrets.REST_API_KEY }}
+          REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+        run: |
+          python stock_bot.py
