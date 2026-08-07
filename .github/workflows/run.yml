@@ -1,26 +1,26 @@
 name: Send Stock Briefing
 
 on:
+  workflow_dispatch:  # 수동 실행 버튼 활성화
   schedule:
-    # KST 기준 아침 7시, 11시, 오후 4시, 저녁 7시 자동 실행 설정
-    - cron: '22 21,1,6,9 * * *'
-  workflow_dispatch: # 깃허브 웹에서 수동 실행 버튼 제공
+    # 매일 한국 시간 기준 아침 7시 0분에 자동 실행 (UTC 시간 기준 밤 10시에 해당)
+    - cron: '0 22 * * *'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
-          pip install requests yfinance pykrx pytz pandas numpy
+          pip install requests yfinance pykrx pandas numpy pytz
 
       - name: Run stock briefing script
-        run: python stock_bot.py  # 본인이 저장한 파이썬 파일명으로 수정하세요 (예: main.py)
+        run: python stock_bot.py
