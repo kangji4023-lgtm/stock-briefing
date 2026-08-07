@@ -1,3 +1,4 @@
+import os
 import requests
 import json
 
@@ -5,8 +6,9 @@ import json
 KRX_ID = os.environ.get("KRX_ID")
 KRX_PW = os.environ.get("KRX_PW")
 
+# KRX 정보가 없을 경우 경고 출력 (실행은 계속됨)
 if not KRX_ID or not KRX_PW:
-    print("KRX 로그인 실패: KRX_ID 또는 KRX_PW 환경 변수가 설정되지 않았습니다.")
+    print("경고: KRX_ID 또는 KRX_PW 환경 변수가 설정되지 않았습니다.")
 
 def safe_format(value, default="0.00"):
     if value is None:
@@ -19,6 +21,7 @@ def safe_format(value, default="0.00"):
     return value
 
 def create_stock_briefing():
+    # 주식 브리핑 내용 생성 (기존 내용 유지)
     part1 = (
         "📈 2026-08-06 주식 브리핑 (오후 4시 마감 브리핑)\n"
         "⚡ 실시간 시장 정밀 분석 리포트\n\n"
@@ -82,7 +85,7 @@ def get_access_token():
     refresh_token = os.environ.get("KAKAO_REFRESH_TOKEN")
     
     if not client_id or not refresh_token:
-        print("카카오 토큰 갱신 실패: KAKAO_CLIENT_ID 또는 KAKAO_REFRESH_TOKEN이 설정되지 않았습니다.")
+        print("에러: KAKAO_CLIENT_ID 또는 KAKAO_REFRESH_TOKEN 환경 변수가 설정되지 않았습니다.")
         return None
         
     url = "https://kauth.kakao.com/oauth/token"
@@ -92,17 +95,22 @@ def get_access_token():
         "refresh_token": refresh_token
     }
     
-    response = requests.post(url, data=data)
-    if response.status_code == 200:
-        return response.json().get("access_token")
-    else:
-        print(f"토큰 갱신 실패: {response.json()}")
+    try:
+        response = requests.post(url, data=data)
+        if response.status_code == 200:
+            return response.json().get("access_token")
+        else:
+            print(f"토큰 갱신 실패: {response.json()}")
+            return None
+    except Exception as e:
+        print(f"토큰 요청 중 오류 발생: {e}")
         return None
 
 def send_kakao_message(text):
     """카카오톡 나에게 보내기 API를 호출하여 메시지를 전송합니다."""
     access_token = get_access_token()
     if not access_token:
+        print("액세스 토큰이 없어 메시지를 전송할 수 없습니다.")
         return
 
     url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
@@ -123,18 +131,20 @@ def send_kakao_message(text):
         "template_object": json.dumps(template)
     }
     
-    response = requests.post(url, headers=headers, data=payload)
-    
-    if response.status_code == 200:
-        print("카카오톡 메시지 전송 성공!")
-    else:
-        print(f"카카오톡 메시지 전송 실패: {response.status_code}")
-        print(response.json())
+    try:
+        response = requests.post(url, headers=headers, data=payload)
+        if response.status_code == 200:
+            print("카카오톡 메시지 전송 성공!")
+        else:
+            print(f"카카오톡 메시지 전송 실패: {response.status_code}")
+            print(response.json())
+    except Exception as e:
+        print(f"메시지 전송 중 오류 발생: {e}")
 
 if __name__ == "__main__":
-    print("[2026-08-06 10:04:49] 표 형식 주식 브리핑 생성 및 전송 시작...")
+    print(f"[{os.environ.get('GITHUB_RUN_ID', 'LOCAL')}] 주식 브리핑 생성 및 전송 시작...")
     briefings = create_stock_briefing()
     for i, content in enumerate(briefings, 1):
         print(f"파트 {i} 전송 중...")
         send_kakao_message(content)
-    print("모든 브리핑 전송 완료!")
+    print("모든 작업이 완료되었습니다.")
