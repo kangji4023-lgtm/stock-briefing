@@ -1,7 +1,4 @@
-import os
-import json
-import requests
-import datetime
+import os, json, requests, datetime
 from datetime import timezone, timedelta
 import yfinance as yf
 from pykrx import stock
@@ -33,7 +30,6 @@ def send_kakao_message(text):
     requests.post(url, headers=header, data=data)
 
 def get_realtime_data():
-    # 미국 시장 데이터 (yfinance)
     us_indices = {"NASDAQ": "^IXIC", "S&P500": "^GSPC", "DOW": "^DJI"}
     us_result = ""
     for name, symbol in us_indices.items():
@@ -45,15 +41,14 @@ def get_realtime_data():
         except Exception:
             us_result += f"* {name}: 조회 실패\n"
     
-    # 국내 코스피 지수 데이터 안전하게 가져오기
-    kr_price_str = "조회 중"
+    kr_price_str = "실시간 집계 중"
     try:
-        # 로그인이 필요 없는 기본적인 코스피 종가 조회 방식 사용
         df = stock.get_index_ohlcv_by_ticker(target_date)
         if not df.empty and "1001" in df.index:
-            kr_price_str = f"{df.loc['1001', '종قار']:,.2f}p" if '종가' in df.columns else f"{df.loc['1001', df.columns[3]]:,.2f}p"
-    except Exception as e:
-        kr_price_str = "실시간 집계 중"
+            col = '종가' if '종가' in df.columns else df.columns[3]
+            kr_price_str = f"{df.loc['1001', col]:,.2f}p"
+    except Exception:
+        pass
 
     return us_result, kr_price_str
 
@@ -67,4 +62,3 @@ if __name__ == "__main__":
     send_kakao_message(msg1)
     send_kakao_message(msg2)
     send_kakao_message(msg3)
-    print("모든 브리핑 전송 완료!")
