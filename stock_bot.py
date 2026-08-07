@@ -22,6 +22,30 @@ def safe_format(value, default="0.00"):
 
 def create_stock_briefing():
     # 주식 브리핑 내용 생성 (기존 내용 유지)
+    import os
+import requests
+import json
+
+# 환경 변수에서 KRX 정보 가져오기
+KRX_ID = os.environ.get("KRX_ID")
+KRX_PW = os.environ.get("KRX_PW")
+
+# KRX 정보가 없을 경우 경고 출력 (실행은 계속됨)
+if not KRX_ID or not KRX_PW:
+    print("경고: KRX_ID 또는 KRX_PW 환경 변수가 설정되지 않았습니다.")
+
+def safe_format(value, default="0.00"):
+    if value is None:
+        return default
+    try:
+        if str(value).lower() == "nan":
+            return default
+    except:
+        pass
+    return value
+
+def create_stock_briefing():
+    # 주식 브리핑 내용 생성 (기존 내용 유지)
     part1 = (
         "📈 2026-08-06 주식 브리핑 (오후 4시 마감 브리핑)\n"
         "⚡ 실시간 시장 정밀 분석 리포트\n\n"
@@ -148,3 +172,4 @@ if __name__ == "__main__":
         print(f"파트 {i} 전송 중...")
         send_kakao_message(content)
     print("모든 작업이 완료되었습니다.")
+        
