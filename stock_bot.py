@@ -1,6 +1,5 @@
 import os
 import time
-import schedule
 import requests
 import pandas as pd
 import numpy as np
@@ -11,14 +10,17 @@ import yfinance as yf
 # ==========================================
 # 1. 환경 변수 설정 영역 (GitHub Secrets 연동)
 # ==========================================
-REST_API_KEY = os.environ.get("REST_API_KEY", "YOUR_REST_API_KEY")
-REFRESH_TOKEN = os.environ.get("REFRESH_TOKEN", "YOUR_REFRESH_TOKEN")
-REDIRECT_URI = "https://localhost"
+REST_API_KEY = os.environ.get("REST_API_KEY", "")
+REFRESH_TOKEN = os.environ.get("REFRESH_TOKEN", "")
 
 def get_access_token_by_refresh_token():
     """리프레시 토큰을 이용해 새로운 액세스 토큰을 자동으로 발급받는 함수"""
-    global REFRESH_TOKEN  # global 선언을 함수 맨 처음에 위치시킴
+    global REFRESH_TOKEN
     
+    if not REST_API_KEY or not REFRESH_TOKEN:
+        print("카카오 REST_API_KEY 또는 REFRESH_TOKEN이 설정되지 않았습니다.")
+        return None
+
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
@@ -72,63 +74,15 @@ def send_kakao_message(text):
         time.sleep(0.5)
 
 # ==========================================
-# 2. 기술적 지표 계산 함수
-# ==========================================
-def calculate_technical_indicators(df):
-    try:
-        close = df['Close']
-        volume = df['Volume']
-        
-        ma20 = close.rolling(window=20).mean().iloc[-1]
-        ma60 = close.rolling(window=60).mean().iloc[-1]
-        ma120 = close.rolling(window=120).mean().iloc[-1]
-        current_price = close.iloc[-1]
-        
-        s_20 = "위" if current_price >= ma20 else "아래"
-        s_60 = "위" if current_price >= ma60 else "아래"
-        s_120 = "위" if current_price >= ma120 else "아래"
-        
-        delta = close.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        current_rsi = rsi.iloc[-1] if not pd.isna(rsi.iloc[-1]) else 50.0
-        
-        exp1 = close.ewm(span=12, adjust=False).mean()
-        exp2 = close.ewm(span=26, adjust=False).mean()
-        macd = exp1 - exp2
-        signal = macd.ewm(span=9, adjust=False).mean()
-        macd_status = "골든크로스" if macd.iloc[-1] > signal.iloc[-1] else "데드크로스"
-        
-        obv = (np.sign(close.diff()) * volume).fillna(0).cumsum()
-        obv_trend = "증가" if obv.iloc[-1] > obv.iloc[-2] else "감소"
-        
-        ma5 = close.rolling(window=5).mean()
-        golden_cross = "Y" if (ma5.iloc[-2] < ma20.iloc[-2]) and (ma5.iloc[-1] >= ma20.iloc[-1]) else "N"
-        
-        return {
-            "rsi": round(current_rsi, 1),
-            "macd": macd_status,
-            "obv": obv_trend,
-            "golden": golden_cross,
-            "ma20": s_20,
-            "ma60": s_60,
-            "ma120": s_120,
-            "close": current_price
-        }
-    except Exception:
-        return {"rsi": 50.0, "macd": "중립", "obv": "유지", "golden": "N", "ma20": "위", "ma60": "위", "ma120": "위"}
-
-# ==========================================
-# 3. 주식 데이터 수집 및 브리핑 생성
+# 2. 주식 데이터 수집 및 브리핑 생성
 # ==========================================
 def generate_full_briefing():
     today = datetime.now().strftime("%Y-%m-%d")
     
+    # 안정적인 티커로 변경 (WTI유: BZ=X 또는 유가 관련 지표)
     macro_symbols = {
         "USD/KRW": "USDKRW=X",
-        "WTI유": "CL=X",
+        "WTI유": "BZ=X",
         "국채금리(10년)": "^TNX",
         "VIX지수": "^VIX"
     }
@@ -160,15 +114,19 @@ def generate_full_briefing():
         except:
             us_result_str += f"- {name}: 조회 실패\n"
 
+    # pykrx 안전 조회
+    kospi_val = "집계 중"
+    kosdaq_val = "집계 중"
     try:
         krx_date = stock.get_nearest_business_day_in_a_week(datetime.now().strftime("%Y%m%d"))
         kospi_df = stock.get_index_price_change_by_ticker(krx_date, krx_date, "1001")
         kosdaq_df = stock.get_index_price_change_by_ticker(krx_date, krx_date, "2001")
-        kospi_val = f"{kospi_df['종가'].iloc[0]:,.2f} ({kospi_df['등락률'].iloc[0]:+.2f}%)"
-        kosdaq_val = f"{kosdaq_df['종가'].iloc[0]:,.2f} ({kosdaq_df['등락률'].iloc[0]:+.2f}%)"
-    except:
-        kospi_val = "집계 중"
-        kosdaq_val = "집계 중"
+        if not kospi_df.empty:
+            kospi_val = f"{kospi_df['종가'].iloc[0]:,.2f} ({kospi_df['등락률'].iloc[0]:+.2f}%)"
+        if not kosdaq_df.empty:
+            kosdaq_val = f"{kosdaq_df['종가'].iloc[0]:,.2f} ({kosdaq_df['등락률'].iloc[0]:+.2f}%)"
+    except Exception as e:
+        print(f"국내 지수 조회 예외: {e}")
 
     full_message = f"""📅 {today}
 
@@ -189,7 +147,7 @@ def generate_full_briefing():
 ━━━━━━━━━━━━━━
 📊 거시경제 지표
 - 환율(USD/KRW): {macro_data.get('USD/KRW', 'N/A')}
-- WTI유: {macro_data.get('WTI유', 'N/A')}
+- 브렌트유(WTI): {macro_data.get('WTI유', 'N/A')}
 - 미국채 10년물 금리: {macro_data.get('국채금리(10년)', 'N/A')}
 - VIX 공포지수: {macro_data.get('VIX지수', 'N/A')}
 
@@ -206,9 +164,5 @@ def job():
     send_kakao_message(briefing_content)
     print(f"[{datetime.now()}] 전송 완료!")
 
-# ==========================================
-# 4. 실행부 (GitHub Actions 실행 시 즉시 1회 실행 후 종료)
-# ==========================================
 if __name__ == "__main__":
-    # GitHub Actions 환경에서는 스케줄러 대기 없이 바로 실행되도록 job()을 호출합니다.
     job()
