@@ -1,3 +1,4 @@
+import os
 import time
 import schedule
 import requests
@@ -8,14 +9,16 @@ from pykrx import stock
 import yfinance as yf
 
 # ==========================================
-# 1. 카카오 인증 설정 영역 (필수 입력)
+# 1. 환경 변수 설정 영역 (GitHub Secrets 연동)
 # ==========================================
-REST_API_KEY = "YOUR_REST_API_KEY"      # 카카오 앱 REST API 키
-REFRESH_TOKEN = "YOUR_REFRESH_TOKEN"    # 유효기간이 긴 카카오 리프레시 토큰
-REDIRECT_URI = "https://localhost"      # 카카오 앱 설정에 등록된 Redirect URI
+REST_API_KEY = os.environ.get("REST_API_KEY", "YOUR_REST_API_KEY")
+REFRESH_TOKEN = os.environ.get("REFRESH_TOKEN", "YOUR_REFRESH_TOKEN")
+REDIRECT_URI = "https://localhost"
 
 def get_access_token_by_refresh_token():
     """리프레시 토큰을 이용해 새로운 액세스 토큰을 자동으로 발급받는 함수"""
+    global REFRESH_TOKEN  # global 선언을 함수 맨 처음에 위치시킴
+    
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
@@ -27,9 +30,7 @@ def get_access_token_by_refresh_token():
         if response.status_code == 200:
             tokens = response.json()
             access_token = tokens.get("access_token")
-            # 만약 리프레시 토큰도 새로 발급되어 돌아왔다면 갱신해 줄 수 있음
             if "refresh_token" in tokens:
-                global REFRESH_TOKEN
                 REFRESH_TOKEN = tokens["refresh_token"]
             return access_token
         else:
@@ -206,20 +207,8 @@ def job():
     print(f"[{datetime.now()}] 전송 완료!")
 
 # ==========================================
-# 4. 매일 4번 시간 설정 및 상시 구동부
+# 4. 실행부 (GitHub Actions 실행 시 즉시 1회 실행 후 종료)
 # ==========================================
 if __name__ == "__main__":
-    # 매일 07:00, 11:00, 16:00, 19:00 자동 발송 스케줄 설정
-    schedule.every().day.at("07:00").do(job)
-    schedule.every().day.at("11:00").do(job)
-    schedule.every().day.at("16:00").do(job)
-    schedule.every().day.at("19:00").do(job)
-
-    print("주식 자동 브리핑 스케줄러가 실행되었습니다. (매일 07:00, 11:00, 16:00, 19:00 자동 발송 대기 중)")
-    
-    # 즉시 테스트를 원하시면 아래 주석을 해제하세요.
-    # job()
-
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    # GitHub Actions 환경에서는 스케줄러 대기 없이 바로 실행되도록 job()을 호출합니다.
+    job()
