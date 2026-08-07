@@ -1,10 +1,12 @@
 name: Send Stock Briefing
 
 on:
-  workflow_dispatch:  # 수동 실행 버튼 활성화
+  workflow_dispatch:
   schedule:
-    # 매일 한국 시간 기준 아침 7시 0분에 자동 실행 (UTC 시간 기준 밤 10시에 해당)
-    - cron: '0 22 * * *'
+    - cron: '0 22 * * *'  # 한국 아침 7시
+    - cron: '0 2 * * *'   # 한국 오전 11시
+    - cron: '0 7 * * *'   # 한국 오후 4시
+    - cron: '0 10 * * *'  # 한국 저녁 7시
 
 jobs:
   build:
