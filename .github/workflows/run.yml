@@ -1,4 +1,4 @@
-uname: Send Stock Briefing
+name: Send Stock Briefing
 
 on:
   schedule:
