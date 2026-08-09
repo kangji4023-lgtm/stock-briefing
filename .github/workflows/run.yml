@@ -1,50 +1,81 @@
-name: Stock Market Kakao Briefing
+name: Stock Briefing Kakao
 
 on:
   workflow_dispatch:
 
   schedule:
-    - cron: "0 22 * * *"
-    - cron: "0 2 * * *"
-    - cron: "0 7 * * *"
-    - cron: "0 10 * * *"
+    # 한국시간 오전 7시
+    - cron: '0 22 * * *'
+
+    # 한국시간 오전 11시
+    - cron: '0 2 * * *'
+
+    # 한국시간 오후 4시
+    - cron: '0 7 * * *'
+
+    # 한국시간 오후 7시
+    - cron: '0 10 * * *'
 
 jobs:
-  stock-bot:
+
+  build:
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas pytz requests yfinance pykrx
+          pip install requests yfinance pykrx pandas numpy pytz
 
-      - name: Run stock briefing script
+      - name: Check Secrets
         env:
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
           KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
         run: |
-          echo "한국시간:"
-          TZ=Asia/Seoul date
+          echo "===================================="
+          echo "Kakao Secret 확인"
+          echo "===================================="
 
-          echo "stock_bot.py 실행"
+          if [ -z "$KAKAO_REST_API_KEY" ]; then
+            echo "❌ KAKAO_REST_API_KEY 없음"
+            exit 1
+          else
+            echo "✅ KAKAO_REST_API_KEY 확인"
+          fi
+
+          if [ -z "$KAKAO_REFRESH_TOKEN" ]; then
+            echo "❌ KAKAO_REFRESH_TOKEN 없음"
+            exit 1
+          else
+            echo "✅ KAKAO_REFRESH_TOKEN 확인"
+          fi
+
+          if [ -z "$KAKAO_CLIENT_SECRET" ]; then
+            echo "ℹ️ KAKAO_CLIENT_SECRET 없음 - 선택사항"
+          else
+            echo "✅ KAKAO_CLIENT_SECRET 확인"
+          fi
+
+      - name: Python Syntax Check
+        run: |
+          python -m py_compile stock_bot.py
+          echo "✅ stock_bot.py 문법 검사 완료"
+
+      - name: Run Stock Briefing
+        env:
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+        run: |
           python stock_bot.py
-
-      - name: Success
-        if: success()
-        run: |
-          echo "카카오 주식 브리핑 전송 성공"
-
-      - name: Failure
-        if: failure()
-        run: |
-          echo "카카오 주식 브리핑 전송 실패"
