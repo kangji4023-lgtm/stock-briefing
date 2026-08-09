@@ -1,238 +1,552 @@
-from datetime import datetime
+import os
+import json
+import time
+from datetime import datetime, timedelta
+
+import pandas as pd
 import pytz
 import requests
 import yfinance as yf
 from pykrx import stock
-import pandas as pd
-import numpy as np
 
-# ==========================================
-# 사용자 설정 정보
-# ==========================================
-CLIENT_ID = "2e2432752d3bcaaf637aa44cfb75a555"
-REFRESH_TOKEN = "Pu-B2xW7jCGuYmeZsz2GC2B8_xM4bk73AAAAAgoXBi4AAAGf208W5Kj01SImjvGc" 
+KST = pytz.timezone("Asia/Seoul")
+
+KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa44cfb75a555").strip()
+KAKAO_REFRESH_TOKEN = os.getenv("KAKAO_REFRESH_TOKEN", "Pu-B2xW7jCGuYmeZsz2GC2B8_xM4bk73AAAAAgoXBi4AAAGf208W5Kj01SImjvGc").strip()
+KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET", "2e2432752d3bcaaf637aa44cfb75a555").strip()
+
+KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token"
+KAKAO_SEND_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
+
+
+def require_secrets():
+    missing = []
+    if not KAKAO_REST_API_KEY:
+        missing.append("KAKAO_REST_API_KEY")
+    if not KAKAO_REFRESH_TOKEN:
+        missing.append("KAKAO_REFRESH_TOKEN")
+    if missing:
+        raise RuntimeError("GitHub Secrets 누락: " + ", ".join(missing))
+
 
 def get_kakao_access_token():
-    url = "https://kauth.kakao.com/oauth/token"
+    require_secrets()
+
     data = {
         "grant_type": "refresh_token",
-        "client_id": CLIENT_ID,
-        "refresh_token": REFRESH_TOKEN
+        "client_id": KAKAO_REST_API_KEY,
+        "refresh_token": KAKAO_REFRESH_TOKEN,
     }
-    try:
-        response = requests.post(url, data=data, timeout=5)
-        if response.status_code == 200:
-            return response.json().get("access_token")
-        return None
-    except:
-        return None
 
-def send_kakao_message(text):
-    """카카오톡 메시지 전송 (900자씩 분할 전송)"""
-    access_token = get_kakao_access_token()
+    # Client Secret을 사용하는 앱이면 GitHub Secret에 넣어 두면 자동 사용합니다.
+    if KAKAO_CLIENT_SECRET:
+        data["client_secret"] = KAKAO_CLIENT_SECRET
+
+    r = requests.post(KAKAO_TOKEN_URL, data=data, timeout=20)
+    print(f"[KAKAO TOKEN] HTTP {r.status_code}")
+
+    if r.status_code != 200:
+        raise RuntimeError(
+            f"Kakao 토큰 발급 실패: HTTP {r.status_code} / {r.text}"
+        )
+
+    result = r.json()
+    access_token = result.get("access_token")
+
     if not access_token:
-        return False
+        raise RuntimeError(f"access_token 없음: {result}")
 
-    url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    
-    chunks = [text[i:i+900] for i in range(0, len(text), 900)]
-    success = True
-    
-    for chunk in chunks:
-        template_object = {
-            "object_type": "text",
-            "text": chunk,
-            "link": {
-                "web_url": "https://developers.kakao.com",
-                "mobile_web_url": "https://developers.kakao.com"
-            }
-        }
-        data = {"template_object": str(template_object).replace("'", '"')}
-        try:
-            response = requests.post(url, headers=headers, data=data, timeout=5)
-            if response.status_code != 200:
-                success = False
-        except:
-            success = False
-    return success
+    if result.get("refresh_token"):
+        print("[KAKAO TOKEN] 새 refresh_token이 반환되었습니다. "
+              "필요하면 GitHub Secret을 갱신하세요.")
 
-def get_safe_krx_date():
+    return access_token
+
+
+def split_message(text, max_chars=190):
+    """카카오 기본 text 템플릿의 200자 제한을 고려해 190자 이하로 분할."""
+    text = str(text).strip()
+    chunks = []
+
+    while len(text) > max_chars:
+        cut = text.rfind("\n", 0, max_chars + 1)
+
+        if cut < max_chars // 2:
+            cut = text.rfind(" ", 0, max_chars + 1)
+
+        if cut < max_chars // 2:
+            cut = max_chars
+
+        chunks.append(text[:cut].strip())
+        text = text[cut:].strip()
+
+    if text:
+        chunks.append(text)
+
+    return chunks
+
+
+def send_one_kakao_message(access_token, text):
+    if len(text) > 200:
+        raise ValueError(f"카카오 메시지가 200자를 초과했습니다: {len(text)}자")
+
+    template_object = {
+        "object_type": "text",
+        "text": text,
+        "link": {
+            "web_url": "https://developers.kakao.com",
+            "mobile_web_url": "https://developers.kakao.com",
+        },
+    }
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
+    }
+
+    data = {
+        "template_object": json.dumps(
+            template_object,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    }
+
+    r = requests.post(
+        KAKAO_SEND_URL,
+        headers=headers,
+        data=data,
+        timeout=20,
+    )
+
+    print(f"[KAKAO SEND] HTTP {r.status_code} / {r.text}")
+
+    if r.status_code != 200:
+        raise RuntimeError(
+            f"Kakao 메시지 전송 실패: HTTP {r.status_code} / {r.text}"
+        )
+
+
+def send_kakao_report(parts):
+    access_token = get_kakao_access_token()
+
+    all_chunks = []
+    for part_no, part in enumerate(parts, 1):
+        chunks = split_message(part)
+        for chunk_no, chunk in enumerate(chunks, 1):
+            all_chunks.append((part_no, chunk_no, len(chunks), chunk))
+
+    print(f"[KAKAO] 전체 전송 메시지 수: {len(all_chunks)}")
+
+    for index, (part_no, chunk_no, part_total, chunk) in enumerate(
+        all_chunks, 1
+    ):
+        print(
+            f"[KAKAO] 전송 {index}/{len(all_chunks)} "
+            f"(파트 {part_no}, {chunk_no}/{part_total}, {len(chunk)}자)"
+        )
+
+        send_one_kakao_message(access_token, chunk)
+        time.sleep(0.7)
+
+    print("[KAKAO] 전체 메시지 전송 완료")
+
+
+def previous_weekday(date_str):
+    d = datetime.strptime(date_str, "%Y%m%d")
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d.strftime("%Y%m%d")
+
+
+def get_krx_date():
+    today = datetime.now(KST).strftime("%Y%m%d")
+
     try:
-        now = datetime.now(pytz.timezone('Asia/Seoul'))
-        today_str = now.strftime("%Y%m%d")
-        return stock.get_nearest_business_day_in_a_week(today_str)
-    except:
-        return datetime.now().strftime("%Y%m%d")
+        d = stock.get_nearest_business_day_in_a_week(today)
+        if d:
+            return str(d)
+    except Exception as e:
+        print(f"[KRX DATE] pykrx 영업일 조회 실패: {e}")
+
+    return previous_weekday(today)
+
+
+def safe_float(value, default=None):
+    try:
+        if pd.isna(value):
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def get_krx_market_data(date_str):
+    result = {
+        "date": date_str,
+        "kospi": None,
+        "kosdaq": None,
+        "top5": [],
+        "status": "정상",
+    }
+
+    # KOSPI
+    try:
+        k = stock.get_index_ohlcv_by_date(date_str, date_str, "1001")
+        if not k.empty:
+            result["kospi"] = {
+                "close": safe_float(k["종가"].iloc[-1]),
+                "rate": safe_float(k["등락률"].iloc[-1]),
+            }
+    except Exception as e:
+        print(f"[KRX] KOSPI 오류: {e}")
+        result["status"] = "일부 오류"
+
+    # KOSDAQ
+    try:
+        kq = stock.get_index_ohlcv_by_date(date_str, date_str, "2001")
+        if not kq.empty:
+            result["kosdaq"] = {
+                "close": safe_float(kq["종가"].iloc[-1]),
+                "rate": safe_float(kq["등락률"].iloc[-1]),
+            }
+    except Exception as e:
+        print(f"[KRX] KOSDAQ 오류: {e}")
+        result["status"] = "일부 오류"
+
+    # 국내 거래대금 TOP 5
+    # 기존 코드의 get_market_trading_value_by_ticker()에서
+    # '거래대금' 컬럼을 찾으면서 오류가 발생할 수 있으므로
+    # OHLCV의 실제 '거래대금' 컬럼을 사용합니다.
+    try:
+        ohlcv = stock.get_market_ohlcv_by_ticker(
+            date_str,
+            market="ALL",
+        )
+
+        if not ohlcv.empty and "거래대금" in ohlcv.columns:
+            top = ohlcv.sort_values(
+                "거래대금",
+                ascending=False,
+            ).head(5)
+
+            for ticker, row in top.iterrows():
+                try:
+                    name = stock.get_market_ticker_name(str(ticker))
+                except Exception:
+                    name = str(ticker)
+
+                result["top5"].append(
+                    {
+                        "ticker": str(ticker),
+                        "name": name,
+                        "close": safe_float(row.get("종가"), 0),
+                        "rate": safe_float(row.get("등락률"), 0),
+                        "value": safe_float(row.get("거래대금"), 0),
+                    }
+                )
+        else:
+            result["status"] = "일부 오류"
+            print("[KRX] 거래대금 컬럼 없음")
+
+    except Exception as e:
+        result["status"] = "일부 오류"
+        print(f"[KRX] 거래대금 TOP5 오류: {e}")
+
+    return result
+
+
+def yf_history(symbol, period="5d", interval="1d", retries=3):
+    last_error = None
+
+    for attempt in range(1, retries + 1):
+        try:
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(
+                period=period,
+                interval=interval,
+                auto_adjust=False,
+                actions=False,
+            )
+
+            if not df.empty:
+                return df
+
+            last_error = RuntimeError("빈 데이터")
+
+        except Exception as e:
+            last_error = e
+
+        time.sleep(attempt)
+
+    print(f"[YF] {symbol} 실패: {last_error}")
+    return pd.DataFrame()
+
+
+def get_latest_and_change(symbol):
+    df = yf_history(symbol, "5d", "1d")
+
+    if len(df) < 1:
+        return None, None
+
+    cur = safe_float(df["Close"].iloc[-1])
+    prev = safe_float(df["Close"].iloc[-2]) if len(df) >= 2 else None
+
+    rate = None
+    if cur is not None and prev not in (None, 0):
+        rate = (cur - prev) / prev * 100
+
+    return cur, rate
+
+
+def get_us_data():
+    symbols = {
+        "NASDAQ": "^IXIC",
+        "S&P500": "^GSPC",
+        "DOW": "^DJI",
+    }
+
+    result = {}
+
+    for name, symbol in symbols.items():
+        cur, rate = get_latest_and_change(symbol)
+        result[name] = {
+            "value": cur,
+            "rate": rate,
+        }
+
+    return result
+
+
+def get_macro_data():
+    symbols = {
+        "환율": "USDKRW=X",
+        "WTI": "CL=F",
+        "미국채10년": "^TNX",
+        "VIX": "^VIX",
+    }
+
+    result = {}
+
+    for name, symbol in symbols.items():
+        cur, rate = get_latest_and_change(symbol)
+        result[name] = {
+            "value": cur,
+            "rate": rate,
+        }
+
+    return result
+
+
+def fmt_num(value, digits=2):
+    if value is None:
+        return "N/A"
+    return f"{value:,.{digits}f}"
+
+
+def fmt_rate(value):
+    if value is None:
+        return "N/A"
+    return f"{value:+.2f}%"
+
+
+def market_mood(krx, us):
+    kr = krx.get("kospi", {}).get("rate")
+
+    us_rates = [
+        item.get("rate")
+        for item in us.values()
+        if item.get("rate") is not None
+    ]
+
+    if kr is not None and kr <= -1:
+        return "하락 압력 / 변동성 주의"
+
+    if kr is not None and kr >= 1:
+        return "강한 상승 / 매수세 유입"
+
+    if us_rates and min(us_rates) <= -1.5:
+        return "글로벌 위험회피 주의"
+
+    if us_rates and max(us_rates) >= 1.5:
+        return "글로벌 위험선호 강화"
+
+    return "중립 / 순환매 가능"
+
 
 def classify_sector(name):
-    """종목명을 받아 실시간 섹터 성격으로 분류"""
-    if any(k in name for k in ["바이오", "제약", "셀트리온", "치과", "의료"]):
-        return "바이오 및 헬스케어"
-    elif any(k in name for k in ["배터리", "에너지", "화학", "엘앤에프", "포스코"]):
-        return "2차전지 및 소재"
-    elif any(k in name for k in ["차", "모빌리티", "기아", "현대"]):
-        return "자동차 및 부품"
-    elif any(k in name for k in ["방산", "한화", "현대로템", "KAI"]):
-        return "방산 및 중공업"
-    elif any(k in name for k in ["반도체", "하이닉스", "삼성전자", "이오테크닉스", "한미반도체"]):
-        return "반도체 및 AI 밸류체인"
-    else:
-        return "기타 핵심 주도 테마"
+    n = str(name)
 
-# ==========================================
-# 100% 실시간 동적 반영 애널리스트 리포트 생성
-# ==========================================
-def generate_analyst_briefings():
-    kst = pytz.timezone('Asia/Seoul')
-    now = datetime.now(kst)
+    if any(x in n for x in [
+        "반도체",
+        "하이닉스",
+        "삼성전자",
+        "한미반도체",
+    ]):
+        return "반도체·AI"
+
+    if any(x in n for x in [
+        "에코프로",
+        "엘앤에프",
+        "포스코",
+        "배터리",
+        "LG에너지",
+    ]):
+        return "2차전지·소재"
+
+    if any(x in n for x in [
+        "셀트리온",
+        "삼성바이오",
+        "제약",
+        "바이오",
+    ]):
+        return "바이오·헬스케어"
+
+    if any(x in n for x in [
+        "한화",
+        "현대로템",
+        "방산",
+        "한국항공",
+    ]):
+        return "방산·중공업"
+
+    if any(x in n for x in [
+        "현대차",
+        "기아",
+        "모비스",
+    ]):
+        return "자동차"
+
+    return "기타"
+
+
+def generate_report():
+    now = datetime.now(KST)
     today = now.strftime("%Y-%m-%d")
-    current_hour = now.hour
-    
-    time_label = "장시작 브리핑"
-    if 9 <= current_hour < 13:
-        time_label = "오전 11시 장중 브리핑"
-    elif 13 <= current_hour < 17:
-        time_label = "오후 4시 마감 브리핑"
-    elif current_hour >= 17:
-        time_label = "저녁 야간 브리핑"
+    hour = now.hour
 
-    krx_date = get_safe_krx_date()
+    if hour < 9:
+        label = "오전 7시 미국장 마감 브리핑"
+    elif hour < 13:
+        label = "오전 11시 장중 브리핑"
+    elif hour < 17:
+        label = "오후 4시 국내장 마감 브리핑"
+    else:
+        label = "오후 7시 미국장 대응 브리핑"
 
-    # 1. 실시간 거래대금 상위 TOP 종목 추출 및 동적 섹터 도출
-    realtime_top_stocks = ""
-    detected_sectors = []
-    try:
-        df_trade = stock.get_market_trading_value_by_ticker(krx_date, krx_date, "ALL")
-        if df_trade is not None and not df_trade.empty:
-            df_top = df_trade.sort_values(by="거래대금", ascending=False).head(5)
-            for i, (ticker, row) in enumerate(df_top.iterrows(), 1):
-                name = stock.get_market_ticker_name(ticker)
-                df_ohlcv = stock.get_market_ohlcv_by_date(krx_date, krx_date, ticker)
-                change_rate = 0.0
-                close_price = 0
-                if not df_ohlcv.empty:
-                    close_price = df_ohlcv['종가'].iloc[0]
-                    change_rate = df_ohlcv['등락률'].iloc[0] if '등락률' in df_ohlcv.columns else 0.0
-                
-                realtime_top_stocks += f"{i}. {name} ({close_price:,}원, {change_rate:+.2f}%)\n"
-                
-                # 상위 종목들의 섹터를 실시간으로 수집
-                sec = classify_sector(name)
-                if sec not in detected_sectors:
-                    detected_sectors.append(sec)
-        else:
-            realtime_top_stocks = "실시간 거래대금 데이터 집계 준비 중\n"
-    except:
-        realtime_top_stocks = "실시간 데이터 조회 중 오류 발생\n"
+    krx_date = get_krx_date()
+    krx = get_krx_market_data(krx_date)
+    us = get_us_data()
+    macro = get_macro_data()
 
-    # 부족한 섹터는 기본 실시간 트렌드 섹터로 채우기
-    default_sectors = ["반도체 및 AI 밸류체인", "2차전지 및 소재", "바이오 및 헬스케어", "방산 및 중공업"]
-    for ds in default_sectors:
-        if ds not in detected_sectors:
-            detected_sectors.append(ds)
+    mood = market_mood(krx, us)
 
-    sec_1 = detected_sectors[0]
-    sec_2 = detected_sectors[1]
-    sec_3 = detected_sectors[2]
+    top5_lines = []
 
-    # 2. 국내 지수
-    kospi_val, kosdaq_val, kospi_rate = "집계 중", "집계 중", 0.0
-    try:
-        k_df = stock.get_index_price_change_by_ticker(krx_date, krx_date, "1001")
-        kd_df = stock.get_index_price_change_by_ticker(krx_date, krx_date, "2001")
-        if not k_df.empty:
-            kospi_rate = k_df['등락률'].iloc[0]
-            kospi_val = f"{k_df['종가'].iloc[0]:,.2f} ({kospi_rate:+.2f}%)"
-        if not kd_df.empty: 
-            kosdaq_val = f"{kd_df['종가'].iloc[0]:,.2f} ({kd_df['등락률'].iloc[0]:+.2f}%)"
-    except: pass
+    for i, item in enumerate(krx["top5"], 1):
+        sector = classify_sector(item["name"])
 
-    # 3. 미국 지수 및 거시경제
-    us_indices = {"NASDAQ": "^IXIC", "S&P500": "^GSPC", "DOW": "^DJI"}
-    us_str = ""
-    us_rates = []
-    for name, sym in us_indices.items():
-        try:
-            t = yf.Ticker(sym).history(period="2d")
-            cur, prev = t['Close'].iloc[-1], t['Close'].iloc[-2]
-            rate = ((cur - prev) / prev) * 100
-            us_rates.append(rate)
-            us_str += f"- {name}: {cur:,.2f} ({rate:+.2f}%)\n"
-        except:
-            us_str += f"- {name}: 데이터 집계 중\n"
+        top5_lines.append(
+            f"{i}. {item['name']} "
+            f"{fmt_num(item['close'], 0)}원 "
+            f"({fmt_rate(item['rate'])}) "
+            f"[{sector}]"
+        )
 
-    macro = {}
-    for name, sym in {"환율": "USDKRW=X", "유가": "CL=F", "국채10년": "^TNX", "VIX": "^VIX"}.items():
-        try:
-            h = yf.Ticker(sym).history(period="1d")
-            macro[name] = f"{h['Close'].iloc[-1]:,.2f}" if not h.empty else "N/A"
-        except:
-            macro[name] = "N/A"
+    if not top5_lines:
+        top5_lines.append("거래대금 데이터 조회 실패")
 
-    # 4. 실시간 시장 분위기 동적 진단
-    market_mood = "안정적 순환매"
-    if kospi_rate < -1.0 or (us_rates and min(us_rates) < -1.5):
-        market_mood = "변동성 확대 및 하방 압력 주의"
-    elif kospi_rate > 1.0 or (us_rates and max(us_rates) > 1.5):
-        market_mood = "강력한 매수세 유입 및 상승 주도"
+    top5_text = "\n".join(top5_lines)
 
-    # ==========================================
-    # 파트별 메시지 구성 (100% 실시간 동적)
-    # ==========================================
-    part1 = f"""📅 {today} 실시간 마켓 리포트 ({time_label}) [1/3]
-────────────────────
-🌍 오늘 시장 실시간 진단
-- 시장 분위기: {market_mood}
-- 실시간 수급 유입 종목 중심 선별 대응.
+    sector_counts = {}
 
-🇰🇷 국내증시 ({krx_date})
-- KOSPI: {kospi_val}
-- KOSDAQ: {kosdaq_val}
+    for item in krx["top5"]:
+        sector = classify_sector(item["name"])
+        sector_counts[sector] = sector_counts.get(sector, 0) + 1
 
-🔥 [실시간 국내 거래대금 상위 TOP 5]
-{realtime_top_stocks.strip()}
-"""
+    sectors = sorted(
+        sector_counts.items(),
+        key=lambda x: x[1],
+        reverse=True,
+    )
 
-    part2 = f"""📊 글로벌 증시 및 실시간 섹터 [2/3]
-────────────────────
-🇺🇸 미국 주요 지수 (실시간)
-{us_str.strip()}
+    sector_text = "\n".join(
+        f"{i}. {name} ({count}개)"
+        for i, (name, count) in enumerate(sectors[:3], 1)
+    )
 
-📊 거시경제 지표 (실시간)
-- 원/달러 환율: {macro.get('환율', 'N/A')}원
-- WTI유: ${macro.get('유가', 'N/A')}
-- 미국채 10년물: {macro.get('국채10년', 'N/A')}
-- VIX 공포지수: {macro.get('VIX', 'N/A')}
+    if not sector_text:
+        sector_text = "TOP 종목 기반 섹터 집계 대기"
 
-⑪ 실시간 수급 주도 섹터 순위
-1위: {sec_1} (거래대금 최상위 집중)
-2위: {sec_2} (수급 유입 포착)
-3위: {sec_3} (순환매 대응 영역)
-"""
+    p1 = (
+        f"📅 {today} {label} [1/3]\n"
+        f"🌍 시장: {mood}\n"
+        f"🇰🇷 KRX 기준일: {krx_date}\n"
+        f"KOSPI: "
+        f"{fmt_num(krx['kospi']['close']) if krx['kospi'] else 'N/A'} "
+        f"({fmt_rate(krx['kospi']['rate']) if krx['kospi'] else 'N/A'})\n"
+        f"KOSDAQ: "
+        f"{fmt_num(krx['kosdaq']['close']) if krx['kosdaq'] else 'N/A'} "
+        f"({fmt_rate(krx['kosdaq']['rate']) if krx['kosdaq'] else 'N/A'})\n"
+        f"🔥 거래대금 TOP5\n"
+        f"{top5_text}"
+    )
 
-    part3 = f"""🎯 실시간 맞춤 투자 전략 및 리스크 [3/3]
-────────────────────
-⭐ 오늘의 실시간 대응 전략
-- 시장 분위기({market_mood})에 따라 무리한 추격 매수보다는 실시간 수급 상위 종목의 눌림목을 노리십시오.
+    p2 = (
+        f"📊 글로벌 증시 [2/3]\n"
+        f"NASDAQ: {fmt_num(us['NASDAQ']['value'])} "
+        f"({fmt_rate(us['NASDAQ']['rate'])})\n"
+        f"S&P500: {fmt_num(us['S&P500']['value'])} "
+        f"({fmt_rate(us['S&P500']['rate'])})\n"
+        f"DOW: {fmt_num(us['DOW']['value'])} "
+        f"({fmt_rate(us['DOW']['rate'])})\n"
+        f"📈 거시지표\n"
+        f"환율: {fmt_num(macro['환율']['value'])}원\n"
+        f"WTI: ${fmt_num(macro['WTI']['value'])}\n"
+        f"미국채10년: {fmt_num(macro['미국채10년']['value'])}\n"
+        f"VIX: {fmt_num(macro['VIX']['value'])}\n"
+        f"🔥 수급 상위 섹터\n"
+        f"{sector_text}"
+    )
 
-⚠️ 실시간 리스크 체크
-- 실시간 환율({macro.get('환율', 'N/A')}원)과 VIX({macro.get('VIX', 'N/A')}) 변동에 따른 외국인 수급 이탈 여부를 예의주시하세요.
-"""
+    p3 = (
+        f"🎯 투자 대응 [3/3]\n"
+        f"① 시장: {mood}\n"
+        f"② 대응: 거래대금 상위 + 상승추세 종목 우선 확인\n"
+        f"③ 추격매수보다 눌림목/거래량 확인\n"
+        f"⚠️ 환율 {fmt_num(macro['환율']['value'])}원, "
+        f"VIX {fmt_num(macro['VIX']['value'])} 변동 주의\n"
+        f"※ KRX/해외 데이터가 장중 지연·휴장일에는 "
+        f"최근 거래일 기준으로 표시됩니다.\n"
+        f"※ 투자판단은 본인 책임입니다."
+    )
 
-    return part1, part2, part3
+    return [p1, p2, p3]
+
 
 def job():
-    kst = pytz.timezone('Asia/Seoul')
-    print(f"[{datetime.now(kst)}] 완전 동적 실시간 리포트 전송 시작...")
-    
-    p1, p2, p3 = generate_analyst_briefings()
-    
-    send_kakao_message(p1)
-    send_kakao_message(p2)
-    send_kakao_message(p3)
-        
-    print("완전 동적 실시간 리포트 전송 완료!")
+    now = datetime.now(KST)
+
+    print("=" * 70)
+    print(f"[START] {now.isoformat()}")
+    print("=" * 70)
+
+    try:
+        parts = generate_report()
+
+        for i, part in enumerate(parts, 1):
+            print(f"\n===== PART {i} =====")
+            print(part)
+
+        send_kakao_report(parts)
+
+        print("[SUCCESS] 주식 브리핑 전송 완료")
+        return 0
+
+    except Exception as e:
+        print(f"[ERROR] {type(e).__name__}: {e}")
+        raise
+
 
 if __name__ == "__main__":
-    job()
+    raise SystemExit(job())
