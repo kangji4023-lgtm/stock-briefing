@@ -9,21 +9,25 @@ import requests
 import yfinance as yf
 from pykrx import stock
 
-KST = pytz.timezone("Asia/Seoul")
 
 # =========================================================
-# GitHub Secrets
+# 기본 설정
 # =========================================================
+KST = pytz.timezone("Asia/Seoul")
+
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa44cfb75a555").strip()
 KAKAO_REFRESH_TOKEN = os.getenv("KAKAO_REFRESH_TOKEN", "Pu-B2xW7jCGuYmeZsz2GC2B8_xM4bk73AAAAAgoXBi4AAAGf208W5Kj01SImjvGc").strip()
-KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET", "2e2432752d3bcaaf637aa44cfb75a555").strip()
+KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET", "").strip()
 
 TOKEN_URL = "https://kauth.kakao.com/oauth/token"
 SEND_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
 
+# 카카오 기본 텍스트 메시지는 200자 제한이 있으므로 여유 있게 분할
+KAKAO_MAX_CHARS = 190
+
 
 # =========================================================
-# 공통
+# 공통 유틸
 # =========================================================
 def fmt_num(value, digits=2):
     if value is None:
@@ -59,6 +63,16 @@ def previous_weekday(date_str):
     return d.strftime("%Y%m%d")
 
 
+def recent_dates(end_date_str, days=10):
+    end_date = datetime.strptime(end_date_str, "%Y%m%d")
+    dates = []
+    for i in range(days):
+        d = end_date - timedelta(days=i)
+        if d.weekday() < 5:
+            dates.append(d.strftime("%Y%m%d"))
+    return dates
+
+
 # =========================================================
 # Kakao
 # =========================================================
@@ -78,37 +92,38 @@ def get_kakao_access_token():
     if KAKAO_CLIENT_SECRET:
         data["client_secret"] = KAKAO_CLIENT_SECRET
 
-    r = requests.post(TOKEN_URL, data=data, timeout=20)
+    response = requests.post(TOKEN_URL, data=data, timeout=20)
 
-    print(f"[KAKAO TOKEN] HTTP {r.status_code}")
+    print(f"[KAKAO TOKEN] HTTP {response.status_code}")
 
-    if r.status_code != 200:
+    if response.status_code != 200:
         raise RuntimeError(
-            f"Kakao 토큰 발급 실패: {r.status_code} / {r.text}"
+            f"Kakao 토큰 발급 실패: {response.status_code} / {response.text}"
         )
 
-    result = r.json()
+    try:
+        result = response.json()
+    except Exception:
+        raise RuntimeError(f"Kakao 토큰 응답 JSON 오류: {response.text}")
 
-    token = result.get("access_token")
+    access_token = result.get("access_token")
 
-    if not token:
+    if not access_token:
         raise RuntimeError(f"access_token 없음: {result}")
 
-    # Kakao가 새 refresh_token을 반환한 경우 로그에만 표시
-    # 실제 Secret 자동 갱신은 GitHub Actions에서 할 수 없으므로
-    # 새 refresh_token은 필요 시 Secret을 수동 갱신해야 합니다.
     if result.get("refresh_token"):
-        print("[KAKAO TOKEN] 새 refresh_token 반환됨")
+        print("[KAKAO TOKEN] 새 refresh_token이 반환되었습니다.")
+        print("[KAKAO TOKEN] 필요하면 GitHub Secret을 수동 갱신하세요.")
 
-    return token
+    return access_token
 
 
-def split_kakao_message(text, max_chars=190):
-    """
-    카카오 기본 text 템플릿의 200자 제한을 고려하여
-    190자 이하로 안전하게 분할합니다.
-    """
+def split_kakao_message(text, max_chars=KAKAO_MAX_CHARS):
     text = str(text).strip()
+
+    if not text:
+        return []
+
     result = []
 
     while len(text) > max_chars:
@@ -131,7 +146,7 @@ def split_kakao_message(text, max_chars=190):
 
 def send_kakao_chunk(access_token, text):
     if len(text) > 200:
-        raise ValueError(f"200자 초과 메시지: {len(text)}자")
+        raise ValueError(f"카카오 메시지 200자 초과: {len(text)}자")
 
     template = {
         "object_type": "text",
@@ -155,23 +170,23 @@ def send_kakao_chunk(access_token, text):
         )
     }
 
-    r = requests.post(
+    response = requests.post(
         SEND_URL,
         headers=headers,
         data=data,
         timeout=20,
     )
 
-    print(f"[KAKAO SEND] HTTP {r.status_code}: {r.text}")
+    print(f"[KAKAO SEND] HTTP {response.status_code}: {response.text}")
 
-    if r.status_code != 200:
+    if response.status_code != 200:
         raise RuntimeError(
-            f"Kakao 메시지 전송 실패: {r.status_code} / {r.text}"
+            f"Kakao 메시지 전송 실패: {response.status_code} / {response.text}"
         )
 
 
 def send_kakao_report(parts):
-    token = get_kakao_access_token()
+    access_token = get_kakao_access_token()
 
     chunks = []
 
@@ -183,7 +198,7 @@ def send_kakao_report(parts):
                 (part_no, chunk_no, len(part_chunks), chunk)
             )
 
-    print(f"[KAKAO] 총 {len(chunks)}개 메시지 전송")
+    print(f"[KAKAO] 총 {len(chunks)}개 메시지 전송 예정")
 
     for i, (part_no, chunk_no, total, chunk) in enumerate(chunks, 1):
         print(
@@ -192,29 +207,142 @@ def send_kakao_report(parts):
             f"길이={len(chunk)}"
         )
 
-        send_kakao_chunk(token, chunk)
-        time.sleep(0.8)
+        send_kakao_chunk(access_token, chunk)
+
+        # 카카오 API 호출 간격
+        time.sleep(1.0)
 
     print("[KAKAO] 전체 전송 완료")
 
 
 # =========================================================
 # KRX
+#
+# 중요:
+# - KRX_ID / KRX_PW 로그인 방식을 사용하지 않습니다.
+# - pykrx가 정상적으로 데이터를 받으면 그대로 사용합니다.
+# - KRX 서버가 JSON을 주지 않거나 일시 오류가 발생하면
+#   프로그램 전체를 중단하지 않고 N/A로 처리합니다.
 # =========================================================
 def get_krx_date():
     today = datetime.now(KST).strftime("%Y%m%d")
 
+    # 먼저 pykrx의 영업일 함수를 시도
     try:
-        d = stock.get_nearest_business_day_in_a_week(today)
+        result = stock.get_nearest_business_day_in_a_week(today)
 
-        if d:
-            return str(d)
+        if result:
+            result = str(result)
+            if len(result) == 8:
+                print(f"[KRX DATE] pykrx 영업일: {result}")
+                return result
 
     except Exception as e:
-        print(f"[KRX DATE] pykrx 조회 실패: {e}")
+        print(f"[KRX DATE] pykrx 영업일 조회 실패: {e}")
 
-    # pykrx가 실패해도 절대로 프로그램을 종료하지 않음
-    return previous_weekday(today)
+    # pykrx 영업일 함수가 실패하면 최근 평일을 순서대로 시도
+    for date_str in recent_dates(today, days=10):
+        try:
+            df = stock.get_index_ohlcv_by_date(
+                date_str,
+                date_str,
+                "1001",
+            )
+
+            if df is not None and not df.empty:
+                print(f"[KRX DATE] 실제 데이터 확인: {date_str}")
+                return date_str
+
+        except Exception as e:
+            print(f"[KRX DATE] {date_str} 확인 실패: {e}")
+
+        time.sleep(0.5)
+
+    fallback = previous_weekday(today)
+    print(f"[KRX DATE] 모든 조회 실패. fallback={fallback}")
+    return fallback
+
+
+def get_krx_index(date_str, ticker, name):
+    for attempt in range(1, 4):
+        try:
+            df = stock.get_index_ohlcv_by_date(
+                date_str,
+                date_str,
+                ticker,
+            )
+
+            if df is not None and not df.empty:
+                close = safe_float(df["종가"].iloc[-1])
+
+                rate = None
+                if "등락률" in df.columns:
+                    rate = safe_float(df["등락률"].iloc[-1])
+
+                return {
+                    "close": close,
+                    "rate": rate,
+                }
+
+            print(f"[KRX] {name} 빈 데이터 attempt={attempt}")
+
+        except Exception as e:
+            print(f"[KRX] {name} 오류 attempt={attempt}: {e}")
+
+        time.sleep(attempt)
+
+    return None
+
+
+def get_krx_top5(date_str):
+    result = []
+
+    for attempt in range(1, 4):
+        try:
+            df = stock.get_market_ohlcv_by_ticker(
+                date_str,
+                market="ALL",
+            )
+
+            if df is None or df.empty:
+                print(f"[KRX] 거래대금 빈 데이터 attempt={attempt}")
+                time.sleep(attempt)
+                continue
+
+            if "거래대금" not in df.columns:
+                print("[KRX] 거래대금 컬럼 없음")
+                return []
+
+            df = df.sort_values(
+                by="거래대금",
+                ascending=False,
+            ).head(5)
+
+            for ticker, row in df.iterrows():
+                ticker = str(ticker)
+
+                try:
+                    name = stock.get_market_ticker_name(ticker)
+                except Exception:
+                    name = ticker
+
+                result.append(
+                    {
+                        "ticker": ticker,
+                        "name": name,
+                        "close": safe_float(row.get("종가")),
+                        "rate": safe_float(row.get("등락률")),
+                        "value": safe_float(row.get("거래대금")),
+                    }
+                )
+
+            return result
+
+        except Exception as e:
+            print(f"[KRX] 거래대금 TOP5 오류 attempt={attempt}: {e}")
+            time.sleep(attempt)
+
+    return []
 
 
 def get_krx_data(date_str):
@@ -226,86 +354,22 @@ def get_krx_data(date_str):
         "krx_ok": False,
     }
 
-    # -------------------------------
     # KOSPI
-    # -------------------------------
-    try:
-        df = stock.get_index_ohlcv_by_date(
-            date_str,
-            date_str,
-            "1001",
-        )
+    result["kospi"] = get_krx_index(
+        date_str,
+        "1001",
+        "KOSPI",
+    )
 
-        if not df.empty:
-            close = safe_float(df["종가"].iloc[-1])
-            rate = safe_float(df["등락률"].iloc[-1])
-
-            result["kospi"] = {
-                "close": close,
-                "rate": rate,
-            }
-
-    except Exception as e:
-        print(f"[KRX] KOSPI 조회 실패: {e}")
-
-    # -------------------------------
     # KOSDAQ
-    # -------------------------------
-    try:
-        df = stock.get_index_ohlcv_by_date(
-            date_str,
-            date_str,
-            "2001",
-        )
+    result["kosdaq"] = get_krx_index(
+        date_str,
+        "2001",
+        "KOSDAQ",
+    )
 
-        if not df.empty:
-            close = safe_float(df["종가"].iloc[-1])
-            rate = safe_float(df["등락률"].iloc[-1])
-
-            result["kosdaq"] = {
-                "close": close,
-                "rate": rate,
-            }
-
-    except Exception as e:
-        print(f"[KRX] KOSDAQ 조회 실패: {e}")
-
-    # -------------------------------
     # 거래대금 TOP5
-    # -------------------------------
-    try:
-        df = stock.get_market_ohlcv_by_ticker(
-            date_str,
-            market="ALL",
-        )
-
-        if not df.empty:
-            if "거래대금" in df.columns:
-                df = df.sort_values(
-                    by="거래대금",
-                    ascending=False,
-                ).head(5)
-
-                for ticker, row in df.iterrows():
-                    try:
-                        name = stock.get_market_ticker_name(
-                            str(ticker)
-                        )
-                    except Exception:
-                        name = str(ticker)
-
-                    result["top5"].append(
-                        {
-                            "ticker": str(ticker),
-                            "name": name,
-                            "close": safe_float(row.get("종가")),
-                            "rate": safe_float(row.get("등락률")),
-                            "value": safe_float(row.get("거래대금")),
-                        }
-                    )
-
-    except Exception as e:
-        print(f"[KRX] 거래대금 TOP5 조회 실패: {e}")
+    result["top5"] = get_krx_top5(date_str)
 
     result["krx_ok"] = bool(
         result["kospi"]
@@ -334,12 +398,8 @@ def yf_history(symbol, period="5d", interval="1d"):
             )
 
             if df is not None and not df.empty:
-                # yfinance 버전에 따라 MultiIndex가 반환될 수 있음
                 if isinstance(df.columns, pd.MultiIndex):
-                    try:
-                        df.columns = df.columns.get_level_values(0)
-                    except Exception:
-                        pass
+                    df.columns = df.columns.get_level_values(0)
 
                 return df
 
@@ -434,46 +494,62 @@ def get_macro_data():
 def classify_sector(name):
     name = str(name)
 
-    if any(x in name for x in [
-        "삼성전자",
-        "하이닉스",
-        "한미반도체",
-        "반도체",
-        "이오테크닉스",
-    ]):
+    if any(
+        x in name
+        for x in [
+            "삼성전자",
+            "하이닉스",
+            "한미반도체",
+            "반도체",
+            "이오테크닉스",
+            "SK스퀘어",
+        ]
+    ):
         return "반도체·AI"
 
-    if any(x in name for x in [
-        "에코프로",
-        "엘앤에프",
-        "포스코",
-        "LG에너지",
-        "삼성SDI",
-        "배터리",
-    ]):
+    if any(
+        x in name
+        for x in [
+            "에코프로",
+            "엘앤에프",
+            "포스코",
+            "LG에너지",
+            "삼성SDI",
+            "배터리",
+        ]
+    ):
         return "2차전지·소재"
 
-    if any(x in name for x in [
-        "셀트리온",
-        "삼성바이오",
-        "바이오",
-        "제약",
-    ]):
+    if any(
+        x in name
+        for x in [
+            "셀트리온",
+            "삼성바이오",
+            "바이오",
+            "제약",
+        ]
+    ):
         return "바이오·헬스케어"
 
-    if any(x in name for x in [
-        "한화",
-        "현대로템",
-        "한국항공",
-        "방산",
-    ]):
+    if any(
+        x in name
+        for x in [
+            "한화",
+            "현대로템",
+            "한국항공",
+            "방산",
+        ]
+    ):
         return "방산·중공업"
 
-    if any(x in name for x in [
-        "현대차",
-        "기아",
-        "현대모비스",
-    ]):
+    if any(
+        x in name
+        for x in [
+            "현대차",
+            "기아",
+            "현대모비스",
+        ]
+    ):
         return "자동차"
 
     return "기타"
@@ -483,12 +559,14 @@ def get_market_mood(krx, us):
     rates = []
 
     if krx.get("kospi"):
-        if krx["kospi"].get("rate") is not None:
-            rates.append(krx["kospi"]["rate"])
+        rate = krx["kospi"].get("rate")
+        if rate is not None:
+            rates.append(rate)
 
-    for x in us.values():
-        if x.get("rate") is not None:
-            rates.append(x["rate"])
+    for item in us.values():
+        rate = item.get("rate")
+        if rate is not None:
+            rates.append(rate)
 
     if not rates:
         return "데이터 확인 필요"
@@ -540,25 +618,31 @@ def generate_report():
     else:
         label = "오후 7시 미국장 대응"
 
+    print("[REPORT] KRX 데이터 조회 시작")
+
     krx_date = get_krx_date()
     krx = get_krx_data(krx_date)
 
-    # KRX가 실패해도 반드시 여기까지 진행
+    print(f"[REPORT] KRX 성공 여부: {krx['krx_ok']}")
+
+    print("[REPORT] 미국시장 데이터 조회 시작")
     us = get_us_data()
+
+    print("[REPORT] 거시지표 조회 시작")
     macro = get_macro_data()
 
     mood = get_market_mood(krx, us)
 
-    # -------------------------------
+    # -----------------------------------------------------
     # 국내 지수
-    # -------------------------------
+    # -----------------------------------------------------
     if krx["kospi"]:
         kospi_text = (
             f"{fmt_num(krx['kospi']['close'])} "
             f"({fmt_rate(krx['kospi']['rate'])})"
         )
     else:
-        kospi_text = "조회 실패"
+        kospi_text = "조회 실패 / N/A"
 
     if krx["kosdaq"]:
         kosdaq_text = (
@@ -566,11 +650,11 @@ def generate_report():
             f"({fmt_rate(krx['kosdaq']['rate'])})"
         )
     else:
-        kosdaq_text = "조회 실패"
+        kosdaq_text = "조회 실패 / N/A"
 
-    # -------------------------------
+    # -----------------------------------------------------
     # 거래대금 TOP5
-    # -------------------------------
+    # -----------------------------------------------------
     top_lines = []
 
     for i, item in enumerate(krx["top5"], 1):
@@ -582,17 +666,17 @@ def generate_report():
 
     if not top_lines:
         top_lines = [
-            "현재 KRX 거래대금 조회 불가",
-            "최근 거래일 데이터 재조회 필요",
+            "KRX 거래대금 조회 불가",
+            "KRX 서버/API 상태에 따라 다음 실행에서 재조회",
         ]
 
     top_text = "\n".join(top_lines)
 
     sector_text = build_sector_text(krx["top5"])
 
-    # -------------------------------
+    # -----------------------------------------------------
     # 파트 1
-    # -------------------------------
+    # -----------------------------------------------------
     p1 = (
         f"📅 {today} {label} [1/3]\n"
         f"🌍 시장: {mood}\n"
@@ -603,9 +687,9 @@ def generate_report():
         f"{top_text}"
     )
 
-    # -------------------------------
+    # -----------------------------------------------------
     # 파트 2
-    # -------------------------------
+    # -----------------------------------------------------
     p2 = (
         f"📊 글로벌 증시 [2/3]\n"
         f"NASDAQ: {fmt_num(us['NASDAQ']['value'])} "
@@ -623,9 +707,9 @@ def generate_report():
         f"{sector_text}"
     )
 
-    # -------------------------------
+    # -----------------------------------------------------
     # 파트 3
-    # -------------------------------
+    # -----------------------------------------------------
     p3 = (
         f"🎯 투자 대응 [3/3]\n"
         f"① 시장: {mood}\n"
@@ -633,7 +717,7 @@ def generate_report():
         f"③ 급등 추격보다 눌림목 확인\n"
         f"⚠️ 환율 {fmt_num(macro['환율']['value'])}원 / "
         f"VIX {fmt_num(macro['VIX']['value'])}\n"
-        f"📌 KRX 오류 시 최근 거래일 재조회\n"
+        f"📌 KRX 조회 실패 시 N/A로 표시 후 다음 실행에서 재시도\n"
         f"※ 데이터 오류·휴장일에는 N/A가 표시될 수 있습니다.\n"
         f"※ 투자판단은 본인 책임입니다."
     )
@@ -648,38 +732,53 @@ def main():
     now = datetime.now(KST)
 
     print("=" * 70)
-    print(f"START: {now.isoformat()}")
+    print("[START]", now.isoformat())
     print("=" * 70)
 
-    # Secret 사전 확인
+    # -----------------------------------------------------
+    # Secret 확인
+    # -----------------------------------------------------
     print(
         "KAKAO_REST_API_KEY:",
         "OK" if KAKAO_REST_API_KEY else "MISSING",
     )
+
     print(
         "KAKAO_REFRESH_TOKEN:",
         "OK" if KAKAO_REFRESH_TOKEN else "MISSING",
     )
+
     print(
         "KAKAO_CLIENT_SECRET:",
         "SET" if KAKAO_CLIENT_SECRET else "NOT SET",
     )
 
-    if not KAKAO_REST_API_KEY or not KAKAO_REFRESH_TOKEN:
+    if not KAKAO_REST_API_KEY:
         raise RuntimeError(
-            "Kakao 필수 Secret이 없습니다."
+            "KAKAO_REST_API_KEY Secret이 없습니다."
         )
 
+    if not KAKAO_REFRESH_TOKEN:
+        raise RuntimeError(
+            "KAKAO_REFRESH_TOKEN Secret이 없습니다."
+        )
+
+    # -----------------------------------------------------
+    # 리포트 생성
+    # -----------------------------------------------------
     parts = generate_report()
 
     for i, part in enumerate(parts, 1):
         print(f"\n===== PART {i} =====")
         print(part)
 
+    # -----------------------------------------------------
+    # 카카오톡 전송
+    # -----------------------------------------------------
     send_kakao_report(parts)
 
     print("=" * 70)
-    print("SUCCESS: 카카오 브리핑 전송 완료")
+    print("[SUCCESS] 카카오 브리핑 전송 완료")
     print("=" * 70)
 
 
