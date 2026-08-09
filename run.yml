@@ -4,11 +4,14 @@ on:
   workflow_dispatch:
 
   schedule:
-    # 한국시간(KST)
-    # 오전 7시  → UTC 22:00
-    # 오전 11시 → UTC 02:00
-    # 오후 4시  → UTC 07:00
-    # 오후 7시  → UTC 10:00
+    # GitHub Actions cron은 UTC 기준입니다.
+    # 한국시간(KST)은 UTC+9입니다.
+    #
+    # 오전 7시  -> UTC 전날 22:00
+    # 오전 11시 -> UTC 02:00
+    # 오후 4시  -> UTC 07:00
+    # 오후 7시  -> UTC 10:00
+
     - cron: "0 22 * * *"
     - cron: "0 2 * * *"
     - cron: "0 7 * * *"
@@ -16,18 +19,19 @@ on:
 
 jobs:
   stock-bot:
+
     runs-on: ubuntu-latest
 
     steps:
 
       # =====================================================
-      # 1. GitHub 저장소 코드 가져오기
+      # 1. 저장소 코드 가져오기
       # =====================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # =====================================================
-      # 2. Python 설치
+      # 2. Python 3.11
       # =====================================================
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,11 +40,12 @@ jobs:
           cache: "pip"
 
       # =====================================================
-      # 3. 필요한 Python 패키지 설치
+      # 3. Python 패키지 설치
       # =====================================================
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+
           pip install pandas
           pip install pytz
           pip install requests
@@ -48,9 +53,9 @@ jobs:
           pip install pykrx
 
       # =====================================================
-      # 4. Secret 환경변수 설정
+      # 4. 주식 브리핑 실행
       # =====================================================
-      - name: Run stock bot
+      - name: Run stock briefing script
         env:
           KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
           KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
@@ -59,30 +64,61 @@ jobs:
         run: |
           echo "=========================================="
           echo "Stock Bot 시작"
-          echo "한국시간:"
+          echo "=========================================="
+
+          echo "GitHub UTC:"
+          date -u
+
+          echo "한국시간(KST):"
           TZ=Asia/Seoul date
+
+          echo "=========================================="
+          echo "Secret 상태"
+          echo "=========================================="
+
+          if [ -n "$KAKAO_REST_API_KEY" ]; then
+            echo "KAKAO_REST_API_KEY = OK"
+          else
+            echo "KAKAO_REST_API_KEY = MISSING"
+          fi
+
+          if [ -n "$KAKAO_REFRESH_TOKEN" ]; then
+            echo "KAKAO_REFRESH_TOKEN = OK"
+          else
+            echo "KAKAO_REFRESH_TOKEN = MISSING"
+          fi
+
+          if [ -n "$KAKAO_CLIENT_SECRET" ]; then
+            echo "KAKAO_CLIENT_SECRET = SET"
+          else
+            echo "KAKAO_CLIENT_SECRET = NOT SET (선택)"
+          fi
+
+          echo "=========================================="
+          echo "stock_bot.py 실행"
           echo "=========================================="
 
           python stock_bot.py
 
       # =====================================================
-      # 5. 실행 완료
+      # 5. 성공
       # =====================================================
-      - name: Completed
+      - name: Success
         if: success()
         run: |
           echo "=========================================="
-          echo "Stock Bot 실행 성공"
-          echo "카카오톡 브리핑 전송 완료"
+          echo "SUCCESS"
+          echo "주식 브리핑 실행 및 카카오톡 전송 완료"
           echo "=========================================="
 
       # =====================================================
-      # 6. 실행 실패
+      # 6. 실패
       # =====================================================
-      - name: Failed
+      - name: Failure
         if: failure()
         run: |
           echo "=========================================="
-          echo "Stock Bot 실행 실패"
-          echo "GitHub Actions 로그를 확인하세요."
+          echo "FAILED"
+          echo "stock_bot.py 실행 중 오류가 발생했습니다."
+          echo "위의 로그를 확인하세요."
           echo "=========================================="
