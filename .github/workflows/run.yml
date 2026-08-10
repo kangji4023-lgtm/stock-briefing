@@ -1,4 +1,4 @@
-name: Stock Market Briefing
+Name: Stock Market Briefing
 
 on:
   # ==========================================================
@@ -46,7 +46,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+          # cache: "pip" <- requirements.txt 에러 방지를 위해 제거했습니다.
 
       # ======================================================
       # 3. pip 업데이트
