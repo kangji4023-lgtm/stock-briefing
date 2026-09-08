@@ -65,7 +65,7 @@ KAKAO_REST_API_KEY = os.environ.get(
 ).strip()
 
 KAKAO_REFRESH_TOKEN = os.environ.get(
-    "KAKAO_REFRESH_TOKEN", "Pu-B2xW7jCGuYmeZsz2GC2B8_xM4bk73AAAAAgoXBi4AAAGf208W5Kj01SImjvGc"
+    "KAKAO_REFRESH_TOKEN", "_xd 16JqG23ybAyiv4oagv5_i4dSlb8AmAAAAAgOXISOAAAGgf41AlKj01SImjvGc"
 ).strip()
 
 KAKAO_CLIENT_SECRET = os.environ.get(
