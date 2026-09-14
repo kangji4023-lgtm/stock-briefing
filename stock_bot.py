@@ -49,29 +49,22 @@ from pykrx import stock
 
 KST = pytz.timezone("Asia/Seoul")
 
-# ------------------------------------------------------------
 # KRX
-# ------------------------------------------------------------
-
 KRX_ID = os.environ.get("KRX_ID", "dmswl904").strip()
 KRX_PW = os.environ.get("KRX_PW", "kang402300*").strip()
 
-# ------------------------------------------------------------
 # KAKAO
-# ------------------------------------------------------------
-
 KAKAO_REST_API_KEY = os.environ.get(
     "KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa44cfb75a555"
 ).strip()
 
 KAKAO_REFRESH_TOKEN = os.environ.get(
-    "KAKAO_REFRESH_TOKEN", "3joS8xxda2YBu2EB1YP3qJiIKsRDu3kbAAAAAgoXC2sAAAGgnqJE9Kj01S1mjvGc"
+    "KAKAO_REFRESH_TOKEN", "9i05o1zDjYiZtEMUOAUZTy56PENwczMAVCoK9VzpGot3dcb-GRNQ-QAAAAQKDRmQAAABoJ6UfFmkJA3lYdtGWQ"
 ).strip()
 
 KAKAO_CLIENT_SECRET = os.environ.get(
     "KAKAO_CLIENT_SECRET", "2e2432752d3bcaaf637aa44cfb75a555"
 ).strip()
-
 
 # ============================================================
 # 1. 관심종목
