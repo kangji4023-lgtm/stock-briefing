@@ -71,7 +71,6 @@ if not KAKAO_REST_API_KEY:
 
 if not KAKAO_REFRESH_TOKEN:
     raise RuntimeError("KAKAO_REFRESH_TOKEN이 없습니다.")
-아래처럼 수정해줘.
 
 KAKAO_REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa44cfb75a555").strip()
 KAKAO_REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN", "M9NhxMubg3Xm1qFrO2dyq0IkO69xtbI0AAAAAgoNIFoAAAGgnv2Bdaj01SImjvGc").strip()
