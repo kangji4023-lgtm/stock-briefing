@@ -76,8 +76,6 @@ KAKAO_REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa
 KAKAO_REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN", "M9NhxMubg3Xm1qFrO2dyq0IkO69xtbI0AAAAAgoNIFoAAAGgnv2Bdaj01SImjvGc").strip()
 KAKAO_CLIENT_SECRET = os.environ.get("KAKAO_CLIENT_SECRET", "2e2432752d3bcaaf637aa44cfb75a555").strip()
 
-그리고 필수값이 없으면 명확한 오류가 발생하도록 해줘.
-
 추가로 카카오 OAuth refresh token을 이용해서
 access token을 자동 재발급하는 함수도 만들어줘.
 
