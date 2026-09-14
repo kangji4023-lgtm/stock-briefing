@@ -53,18 +53,24 @@ KST = pytz.timezone("Asia/Seoul")
 KRX_ID = os.environ.get("KRX_ID", "dmswl904").strip()
 KRX_PW = os.environ.get("KRX_PW", "kang402300*").strip()
 
-현재 stock_bot.py의 카카오 인증 부분을 수정해줘.
+# KAKAO
+KAKAO_REST_API_KEY = os.environ.get(
+    "KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa44cfb75a555"
+).strip()
 
-중요:
-카카오 REST API KEY, REFRESH TOKEN, CLIENT SECRET을
-Python 코드에 하드코딩하지 말고 GitHub Actions Secrets에서만 가져오게 해줘.
+KAKAO_REFRESH_TOKEN = os.environ.get(
+    "KAKAO_REFRESH_TOKEN", "M9NhxMubg3Xm1qFrO2dyq0IkO69xtbI0AAAAAgoNIFoAAAGgnv2Bdaj01SImjvGc"
+).strip()
 
-현재 코드의 다음 구조를 제거해줘.
+KAKAO_CLIENT_SECRET = os.environ.get(
+    "KAKAO_CLIENT_SECRET", "2e2432752d3bcaaf637aa44cfb75a555"
+).strip()
 
-os.environ.get("KAKAO_REST_API_KEY", "실제키")
-os.environ.get("KAKAO_REFRESH_TOKEN", "실제토큰")
-os.environ.get("KAKAO_CLIENT_SECRET", "실제시크릿")
+if not KAKAO_REST_API_KEY:
+    raise RuntimeError("KAKAO_REST_API_KEY가 없습니다.")
 
+if not KAKAO_REFRESH_TOKEN:
+    raise RuntimeError("KAKAO_REFRESH_TOKEN이 없습니다.")
 아래처럼 수정해줘.
 
 KAKAO_REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa44cfb75a555").strip()
