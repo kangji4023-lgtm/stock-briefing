@@ -76,23 +76,6 @@ KAKAO_REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa
 KAKAO_REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN", "M9NhxMubg3Xm1qFrO2dyq0IkO69xtbI0AAAAAgoNIFoAAAGgnv2Bdaj01SImjvGc").strip()
 KAKAO_CLIENT_SECRET = os.environ.get("KAKAO_CLIENT_SECRET", "2e2432752d3bcaaf637aa44cfb75a555").strip()
 
-추가로 카카오 OAuth refresh token을 이용해서
-access token을 자동 재발급하는 함수도 만들어줘.
-
-조건:
-- grant_type=refresh_token
-- https://kauth.kakao.com/oauth/token 사용
-- REST API KEY 사용
-- KAKAO_CLIENT_SECRET이 존재하면 함께 전송
-- access_token은 로그에 절대 출력하지 않기
-- refresh_token도 로그에 절대 출력하지 않기
-- 카카오 API 오류가 발생하면 오류 원인을 알 수 있도록 하되 인증정보 자체는 출력하지 않기
-- 기존 stock_bot.py의 카카오톡 메시지 발송 기능과 연결하기
-- GitHub Actions에서 바로 실행되도록 작성하기
-- 기존 주식 분석 및 메시지 생성 기능은 변경하지 말고 카카오 인증 부분만 안전하게 수정하기
-
-수정된 전체 코드를 보여줘.
-
 # ============================================================
 # 1. 관심종목
 # ============================================================
