@@ -6,7 +6,7 @@
 # 1. KRX 최신 거래일 자동 탐색
 # 2. 2026 KRX 로그인 정책 대응
 # 3. KOSPI / KOSDAQ
-# 4. 국내 거래대금 TOP10
+# 4. 국내 거래대금 TOP5
 # 5. 국내 주도 섹터 분석
 # 6. 국내 관심종목 기술적 분석
 # 7. 국내 뉴스 조회
@@ -1216,5 +1216,4 @@ def get_watchlist_analysis():
 
     for name, symbol in KOREA_WATCHLIST.items():
 
-        data = technical_analysis(
-            symbol
+        data = technical_analysis(symbol)
