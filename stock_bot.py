@@ -1,51 +1,26 @@
-# ============================================================
-# stock_bot.py
-# 국내·미국 주식시장 데이터 기반 자동 브리핑
-#
-# 주요 기능
-# 1. KRX 최신 거래일 자동 탐색
-# 2. 2026 KRX 로그인 정책 대응
-# 3. KOSPI / KOSDAQ
-# 4. 국내 거래대금 TOP5
-# 5. 국내 주도 섹터 분석
-# 6. 국내 관심종목 기술적 분석
-# 7. 국내 뉴스 조회
-# 8. 미국 지수 및 핵심종목
-# 9. 미국 뉴스 조회
-# 10. 원달러 / 미국채10년 / VIX / WTI
-# 11. 카카오톡 나에게 보내기
-# 12. 긴 메시지 자동 분할
-#
-# GitHub Secrets
-# KRX_ID
-# KRX_PW
-# KAKAO_REST_API_KEY
-# KAKAO_REFRESH_TOKEN
-# KAKAO_CLIENT_SECRET (사용 중이면 입력)
-# ============================================================
-
+from datetime import datetime
 import os
 import json
+import base64
 import time
-import html
-import re
-import urllib.parse
-import xml.etree.ElementTree as ET
-
-from datetime import datetime, timedelta
 
 import pytz
 import requests
-import pandas as pd
-import numpy as np
 import yfinance as yf
-
 from pykrx import stock
 
+import pandas as pd
+import numpy as np
 
-# ============================================================
-# 0. 기본 설정
-# ============================================================
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+
+
+# =========================================================
+# 사용자 설정
+# =========================================================
 
 KST = pytz.timezone("Asia/Seoul")
 
@@ -76,548 +51,948 @@ KAKAO_REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa
 KAKAO_REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN", "M9NhxMubg3Xm1qFrO2dyq0IkO69xtbI0AAAAAgoNIFoAAAGgnv2Bdaj01SImjvGc").strip()
 KAKAO_CLIENT_SECRET = os.environ.get("KAKAO_CLIENT_SECRET", "2e2432752d3bcaaf637aa44cfb75a555").strip()
 
-# ============================================================
-# 1. 관심종목
-# ============================================================
+# =========================================================
+# 국내 + 미국 관심종목
+# =========================================================
 
-KOREA_WATCHLIST = {
-    "삼성전자": "005930.KS",
-    "SK하이닉스": "000660.KS",
-    "삼성전기": "009150.KS",
-    "SK스퀘어": "402340.KS",
-    "현대차": "005380.KS",
-    "삼성SDI": "006400.KS",
-    "한미반도체": "042700.KS",
-    "LS ELECTRIC": "010120.KS",
-    "한화에어로스페이스": "012450.KS",
-    "두산에너빌리티": "034020.KS",
+KR_STOCKS = {
+    "005930.KS": "삼성전자",
+    "000660.KS": "SK하이닉스",
+    "009150.KS": "삼성전기",
+    "402340.KS": "SK스퀘어",
+    "005380.KS": "현대차",
+    "006400.KS": "삼성SDI",
+    "042700.KS": "한미반도체",
+    "010120.KS": "LS ELECTRIC",
+    "012450.KS": "한화에어로스페이스",
+    "034020.KS": "두산에너빌리티",
+    "039030.KQ": "이오테크닉스",
+    "403870.KS": "HPSP",
+    "031980.KQ": "피에스케이홀딩스",
 }
 
-USA_WATCHLIST = {
-    "NVIDIA": "NVDA",
-    "Microsoft": "MSFT",
-    "Apple": "AAPL",
-    "Alphabet A": "GOOGL",
-    "Amazon": "AMZN",
-    "Meta": "META",
-    "Tesla": "TSLA",
-    "Broadcom": "AVGO",
-}
-
-
-# ============================================================
-# 2. 국내 섹터
-# ============================================================
-
-SECTORS = {
-    "반도체·AI": [
-        "삼성전자",
-        "SK하이닉스",
-        "한미반도체",
-        "SK스퀘어",
-        "삼성전기",
-        "이오테크닉스",
-        "HPSP",
-        "리노공업",
-        "원익IPS",
-    ],
-
-    "2차전지·배터리": [
-        "삼성SDI",
-        "LG에너지솔루션",
-        "SK이노베이션",
-        "에코프로",
-        "에코프로비엠",
-        "포스코퓨처엠",
-        "엘앤에프",
-    ],
-
-    "방산·우주항공": [
-        "한화에어로스페이스",
-        "현대로템",
-        "한국항공우주",
-        "LIG넥스원",
-        "한화시스템",
-    ],
-
-    "자동차·모빌리티": [
-        "현대차",
-        "기아",
-        "현대모비스",
-        "HL만도",
-    ],
-
-    "바이오·헬스케어": [
-        "삼성바이오로직스",
-        "셀트리온",
-        "유한양행",
-        "알테오젠",
-        "SK바이오팜",
-    ],
-
-    "전력·원전·인프라": [
-        "LS ELECTRIC",
-        "두산에너빌리티",
-        "HD현대일렉트릭",
-        "효성중공업",
-        "두산밥캣",
-    ],
-
-    "조선·중공업": [
-        "HD한국조선해양",
-        "HD현대중공업",
-        "삼성중공업",
-        "한화오션",
-        "HD현대미포",
-    ],
-
-    "금융·증권": [
-        "KB금융",
-        "신한지주",
-        "하나금융지주",
-        "우리금융지주",
-        "메리츠금융지주",
-    ],
+US_STOCKS = {
+    "NVDA": "NVIDIA",
+    "TSLA": "Tesla",
+    "GOOGL": "Alphabet",
+    "AAPL": "Apple",
+    "MSFT": "Microsoft",
+    "AMZN": "Amazon",
+    "META": "Meta",
+    "AVGO": "Broadcom",
+    "AMD": "AMD",
+    "TSM": "TSMC",
+    "SMH": "반도체 ETF",
+    "SOXL": "반도체 3X ETF",
 }
 
 
-# ============================================================
-# 3. 공통 함수
-# ============================================================
+# =========================================================
+# 공통
+# =========================================================
 
 def now_kst():
     return datetime.now(KST)
 
 
-def safe_float(value, default=np.nan):
+def safe_float(value, default=0.0):
     try:
-        if value is None:
-            return default
-
         if pd.isna(value):
             return default
-
         return float(value)
-
-    except Exception:
+    except:
         return default
 
 
-def fmt_number(value, digits=2):
-    try:
-        if value is None or pd.isna(value):
-            return "미집계"
+# =========================================================
+# 카카오 액세스 토큰
+# =========================================================
 
-        return f"{float(value):,.{digits}f}"
+def get_kakao_access_token():
 
-    except Exception:
-        return "미집계"
+    if not CLIENT_ID or not REFRESH_TOKEN:
+        print("❌ KAKAO_REST_API_KEY 또는 KAKAO_REFRESH_TOKEN 없음")
+        return None
 
+    url = "https://kauth.kakao.com/oauth/token"
 
-def fmt_rate(value):
-    try:
-        if value is None or pd.isna(value):
-            return "미집계"
-
-        return f"{float(value):+.2f}%"
-
-
-    except Exception:
-        return "미집계"
-
-
-def fmt_억(value):
-    try:
-        if value is None or pd.isna(value):
-            return "미집계"
-
-        return f"{float(value) / 100000000:,.0f}억"
-
-    except Exception:
-        return "미집계"
-
-
-def clean_text(text):
-    if text is None:
-        return ""
-
-    text = html.unescape(str(text))
-    text = re.sub(r"<[^>]+>", "", text)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
-# ============================================================
-# 4. KRX 환경 확인
-# ============================================================
-
-def check_krx_environment():
-
-    print("=" * 70)
-    print("KRX 환경 확인")
-    print("=" * 70)
-
-    if KRX_ID:
-        print("[KRX] KRX_ID 설정됨")
-    else:
-        print("[KRX] ⚠️ KRX_ID 없음")
-
-    if KRX_PW:
-        print("[KRX] KRX_PW 설정됨")
-    else:
-        print("[KRX] ⚠️ KRX_PW 없음")
-
-    print("=" * 70)
-
-
-# ============================================================
-# 5. KRX 데이터 조회
-# ============================================================
-
-def krx_call(func, *args, **kwargs):
-
-    for attempt in range(3):
-
-        try:
-
-            result = func(
-                *args,
-                **kwargs
-            )
-
-            if result is not None:
-
-                if isinstance(result, pd.DataFrame):
-                    if not result.empty:
-                        return result
-
-                else:
-                    return result
-
-        except Exception as e:
-
-            print(
-                f"[KRX] "
-                f"{func.__name__} "
-                f"{attempt + 1}/3 오류:",
-                e
-            )
-
-        time.sleep(1.5)
-
-    return pd.DataFrame()
-
-
-# ============================================================
-# 6. 최근 KRX 거래일
-# ============================================================
-
-def get_latest_krx_date():
-
-    today = now_kst().date()
-
-    for offset in range(0, 15):
-
-        d = today - timedelta(
-            days=offset
-        )
-
-        date_str = d.strftime(
-            "%Y%m%d"
-        )
-
-        try:
-
-            df = krx_call(
-                stock.get_market_ohlcv_by_ticker,
-                date_str,
-                market="KOSPI"
-            )
-
-            if (
-                isinstance(df, pd.DataFrame)
-                and not df.empty
-            ):
-
-                print(
-                    "[KRX] 최신 거래일:",
-                    date_str
-                )
-
-                return date_str
-
-        except Exception as e:
-
-            print(
-                "[KRX DATE ERROR]",
-                e
-            )
-
-    print(
-        "[KRX] ❌ 최근 거래일 조회 실패"
-    )
-
-    return None
-
-
-# ============================================================
-# 7. 국내 시장지수
-# ============================================================
-
-def get_index_data(
-    ticker,
-    date
-):
-
-    try:
-
-        df = krx_call(
-            stock.get_index_ohlcv_by_date,
-            date,
-            date,
-            ticker
-        )
-
-        if df.empty:
-            return {
-                "value": np.nan,
-                "rate": np.nan,
-                "success": False
-            }
-
-        row = df.iloc[-1]
-
-        return {
-            "value": safe_float(
-                row.get("종가")
-            ),
-            "rate": safe_float(
-                row.get("등락률")
-            ),
-            "success": True
-        }
-
-    except Exception as e:
-
-        print(
-            f"[INDEX {ticker}]",
-            e
-        )
-
-        return {
-            "value": np.nan,
-            "rate": np.nan,
-            "success": False
-        }
-
-
-def get_domestic_indices(date):
-
-    return {
-        "KOSPI": get_index_data(
-            "1001",
-            date
-        ),
-
-        "KOSDAQ": get_index_data(
-            "2001",
-            date
-        ),
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": CLIENT_ID,
+        "refresh_token": REFRESH_TOKEN,
     }
 
+    if CLIENT_SECRET:
+        data["client_secret"] = CLIENT_SECRET
 
-# ============================================================
-# 8. 전체 종목명 → 티커 캐시
-# ============================================================
+    try:
+        response = requests.post(
+            url,
+            data=data,
+            timeout=15
+        )
 
-def build_ticker_map(date):
+        print("카카오 토큰:", response.status_code)
 
-    ticker_map = {}
+        if response.status_code == 200:
+            result = response.json()
 
-    for market in [
-        "KOSPI",
-        "KOSDAQ"
-    ]:
+            # 카카오가 새로운 refresh token을 주는 경우
+            # GitHub Secret 자체는 자동 변경되지 않으므로
+            # 로그에는 토큰을 절대 출력하지 않습니다.
+            return result.get("access_token")
+
+        print("❌ 카카오 토큰 오류:", response.text[:500])
+        return None
+
+    except Exception as e:
+        print("❌ 카카오 토큰 요청 오류:", e)
+        return None
+
+
+# =========================================================
+# 카카오 텍스트 메시지
+# =========================================================
+
+def send_kakao_text(text):
+
+    access_token = get_kakao_access_token()
+
+    if not access_token:
+        return False
+
+    url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    # 너무 긴 메시지를 여러 개로 분할
+    chunks = [
+        text[i:i + 900]
+        for i in range(0, len(text), 900)
+    ]
+
+    success = True
+
+    for chunk in chunks:
+
+        template_object = {
+            "object_type": "text",
+            "text": chunk,
+            "link": {
+                "web_url": "https://developers.kakao.com",
+                "mobile_web_url": "https://developers.kakao.com",
+            }
+        }
+
+        data = {
+            "template_object": json.dumps(
+                template_object,
+                ensure_ascii=False
+            )
+        }
 
         try:
-
-            tickers = stock.get_market_ticker_list(
-                date=date,
-                market=market
+            response = requests.post(
+                url,
+                headers=headers,
+                data=data,
+                timeout=15
             )
 
-            for ticker in tickers:
+            if response.status_code != 200:
+                print("❌ 카카오 텍스트 전송 실패:", response.text)
+                success = False
 
-                try:
-
-                    name = stock.get_market_ticker_name(
-                        ticker
-                    )
-
-                    if name:
-                        ticker_map[name] = ticker
-
-                except Exception:
-                    continue
+            time.sleep(0.5)
 
         except Exception as e:
+            print("❌ 카카오 메시지 오류:", e)
+            success = False
 
-            print(
-                f"[TICKER MAP {market}]",
-                e
-            )
-
-    print(
-        "[KRX] 종목명 매핑:",
-        len(ticker_map)
-    )
-
-    return ticker_map
+    return success
 
 
-# ============================================================
-# 9. 국내 전체 종목 데이터
-# ============================================================
+# =========================================================
+# GitHub에 차트 이미지 업로드
+# =========================================================
 
-def get_all_market_data(date):
+def upload_chart_to_github(local_path, remote_name):
 
-    frames = []
-
-    for market in [
-        "KOSPI",
-        "KOSDAQ"
-    ]:
-
-        try:
-
-            df = krx_call(
-                stock.get_market_ohlcv_by_ticker,
-                date,
-                market=market
-            )
-
-            if (
-                isinstance(df, pd.DataFrame)
-                and not df.empty
-            ):
-
-                temp = df.copy()
-                temp["시장"] = market
-                frames.append(temp)
-
-        except Exception as e:
-
-            print(
-                f"[MARKET DATA {market}]",
-                e
-            )
-
-    if not frames:
-        return pd.DataFrame()
-
-    return pd.concat(
-        frames,
-        axis=0
-    )
-
-
-# ============================================================
-# 10. 국내 종목 데이터
-# ============================================================
-
-def get_stock_data(
-    ticker,
-    date
-):
+    if not GITHUB_TOKEN or not GITHUB_REPOSITORY:
+        print("❌ GitHub 환경변수 없음")
+        return None
 
     try:
 
-        name = stock.get_market_ticker_name(
-            ticker
+        with open(local_path, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
+
+        api_url = (
+            f"https://api.github.com/repos/"
+            f"{GITHUB_REPOSITORY}/contents/"
+            f"{remote_name}"
         )
 
-        df = krx_call(
-            stock.get_market_ohlcv_by_date,
-            date,
-            date,
-            ticker
+        headers = {
+            "Authorization": f"Bearer {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        # 기존 파일 SHA 확인
+        sha = None
+
+        check = requests.get(
+            api_url,
+            headers=headers,
+            timeout=15
+        )
+
+        if check.status_code == 200:
+            sha = check.json().get("sha")
+
+        payload = {
+            "message": f"Update stock chart {remote_name}",
+            "content": content,
+        }
+
+        if sha:
+            payload["sha"] = sha
+
+        response = requests.put(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+
+        if response.status_code not in [200, 201]:
+            print("❌ GitHub 업로드 실패:", response.text[:500])
+            return None
+
+        # raw.githubusercontent.com
+        raw_url = (
+            f"https://raw.githubusercontent.com/"
+            f"{GITHUB_REPOSITORY}/main/{remote_name}"
+        )
+
+        return raw_url
+
+    except Exception as e:
+        print("❌ GitHub 차트 업로드 오류:", e)
+        return None
+
+
+# =========================================================
+# 카카오 이미지 메시지
+# =========================================================
+
+def send_kakao_image(image_url, title, description):
+
+    access_token = get_kakao_access_token()
+
+    if not access_token:
+        return False
+
+    url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+    template_object = {
+        "object_type": "feed",
+        "content": {
+            "title": title,
+            "description": description[:200],
+            "image_url": image_url,
+            "image_width": 1200,
+            "image_height": 800,
+            "link": {
+                "web_url": image_url,
+                "mobile_web_url": image_url,
+            }
+        }
+    }
+
+    data = {
+        "template_object": json.dumps(
+            template_object,
+            ensure_ascii=False
+        )
+    }
+
+    try:
+
+        response = requests.post(
+            url,
+            headers=headers,
+            data=data,
+            timeout=20
+        )
+
+        print(
+            f"카카오 이미지 전송 "
+            f"{response.status_code}: "
+            f"{title}"
+        )
+
+        return response.status_code == 200
+
+    except Exception as e:
+        print("❌ 카카오 이미지 오류:", e)
+        return False
+
+
+# =========================================================
+# 데이터 다운로드
+# =========================================================
+
+def get_stock_data(symbol):
+
+    try:
+
+        df = yf.download(
+            symbol,
+            period="8mo",
+            interval="1d",
+            auto_adjust=False,
+            progress=False,
         )
 
         if df.empty:
             return None
 
-        row = df.iloc[-1]
+        # yfinance MultiIndex 처리
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
 
-        return {
-            "ticker": ticker,
-            "name": name,
-            "price": safe_float(
-                row.get("종가")
-            ),
-            "rate": safe_float(
-                row.get("등락률")
-            ),
-            "volume": safe_float(
-                row.get("거래량")
-            ),
-            "value": safe_float(
-                row.get("거래대금")
-            ),
-        }
+        required = ["Open", "High", "Low", "Close", "Volume"]
+
+        for col in required:
+            if col not in df.columns:
+                return None
+
+        df = df[required].copy()
+
+        for col in required:
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
+            )
+
+        df.dropna(inplace=True)
+
+        if len(df) < 70:
+            return None
+
+        return df
 
     except Exception as e:
-
-        print(
-            f"[STOCK {ticker}]",
-            e
-        )
-
+        print(symbol, "데이터 오류:", e)
         return None
 
 
-# ============================================================
-# 11. 국내 거래대금 TOP10
-# ============================================================
+# =========================================================
+# 기술적 지표 계산
+# =========================================================
 
-def get_domestic_top10(
-    date,
-    market_df=None
-):
+def calculate_indicators(df):
+
+    df = df.copy()
+
+    # 이동평균
+    df["MA5"] = df["Close"].rolling(5).mean()
+    df["MA20"] = df["Close"].rolling(20).mean()
+    df["MA60"] = df["Close"].rolling(60).mean()
+
+    # 거래량 평균
+    df["VOL20"] = df["Volume"].rolling(20).mean()
+
+    # RSI
+    delta = df["Close"].diff()
+
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean()
+
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+
+    df["RSI"] = 100 - (
+        100 / (1 + rs)
+    )
+
+    # MACD
+    ema12 = df["Close"].ewm(
+        span=12,
+        adjust=False
+    ).mean()
+
+    ema26 = df["Close"].ewm(
+        span=26,
+        adjust=False
+    ).mean()
+
+    df["MACD"] = ema12 - ema26
+
+    df["MACD_SIGNAL"] = df["MACD"].ewm(
+        span=9,
+        adjust=False
+    ).mean()
+
+    df["MACD_HIST"] = (
+        df["MACD"] -
+        df["MACD_SIGNAL"]
+    )
+
+    # 최근 20일 고점/저점
+    df["HIGH20"] = df["High"].rolling(20).max()
+    df["LOW20"] = df["Low"].rolling(20).min()
+
+    return df
+
+
+# =========================================================
+# 매수 / 매도 신호 판단
+# =========================================================
+
+def analyze_signal(df):
+
+    df = calculate_indicators(df)
+
+    if len(df) < 65:
+        return df, {
+            "signal": "데이터 부족",
+            "score": 0,
+        }
+
+    today = df.iloc[-1]
+    yesterday = df.iloc[-2]
+
+    score = 0
+    reasons = []
+
+    # -----------------------------------------------------
+    # 1. 골든크로스
+    # -----------------------------------------------------
+
+    golden_cross = (
+        yesterday["MA20"] <= yesterday["MA60"]
+        and today["MA20"] > today["MA60"]
+    )
+
+    death_cross = (
+        yesterday["MA20"] >= yesterday["MA60"]
+        and today["MA20"] < today["MA60"]
+    )
+
+    if golden_cross:
+        score += 3
+        reasons.append("20일선이 60일선을 상향 돌파")
+
+    # -----------------------------------------------------
+    # 2. 정배열
+    # -----------------------------------------------------
+
+    if (
+        today["MA5"] >
+        today["MA20"] >
+        today["MA60"]
+    ):
+        score += 2
+        reasons.append("5·20·60일선 정배열")
+
+    # -----------------------------------------------------
+    # 3. 가격 위치
+    # -----------------------------------------------------
+
+    if today["Close"] > today["MA20"]:
+        score += 1
+        reasons.append("현재가 20일선 위")
+
+    if today["Close"] > today["MA60"]:
+        score += 1
+        reasons.append("현재가 60일선 위")
+
+    # -----------------------------------------------------
+    # 4. 거래량
+    # -----------------------------------------------------
+
+    volume_ratio = (
+        today["Volume"] /
+        today["VOL20"]
+        if today["VOL20"] > 0
+        else 0
+    )
+
+    if volume_ratio >= 1.5:
+        score += 2
+        reasons.append(
+            f"거래량 {volume_ratio:.1f}배 증가"
+        )
+    elif volume_ratio >= 1.2:
+        score += 1
+        reasons.append(
+            f"거래량 {volume_ratio:.1f}배"
+        )
+
+    # -----------------------------------------------------
+    # 5. RSI
+    # -----------------------------------------------------
+
+    rsi = safe_float(today["RSI"])
+
+    if 50 <= rsi <= 68:
+        score += 1
+        reasons.append(
+            f"RSI {rsi:.1f} 상승추세 구간"
+        )
+
+    # -----------------------------------------------------
+    # 6. MACD
+    # -----------------------------------------------------
+
+    macd = safe_float(today["MACD"])
+    signal = safe_float(today["MACD_SIGNAL"])
+
+    if macd > signal:
+        score += 1
+        reasons.append("MACD 상승 우위")
+
+    # -----------------------------------------------------
+    # 강한 매수 조건
+    # -----------------------------------------------------
+
+    strong_buy = (
+        score >= 7
+        and today["Close"] > today["MA20"]
+        and today["Close"] > today["MA60"]
+        and macd > signal
+        and 45 <= rsi <= 70
+    )
+
+    buy = score >= 5
+
+    # -----------------------------------------------------
+    # 매도 조건
+    # -----------------------------------------------------
+
+    sell_reasons = []
+
+    if death_cross:
+        sell_reasons.append(
+            "20일선이 60일선을 하향 돌파"
+        )
+
+    if (
+        rsi >= 75
+        and macd < signal
+    ):
+        sell_reasons.append(
+            "RSI 과열 + MACD 약화"
+        )
+
+    if (
+        today["Close"] < today["MA20"]
+        and macd < signal
+    ):
+        sell_reasons.append(
+            "20일선 이탈 + MACD 약세"
+        )
+
+    if death_cross or (
+        rsi >= 75 and macd < signal
+    ):
+        sell = True
+    else:
+        sell = False
+
+    # -----------------------------------------------------
+    # 최종 신호
+    # -----------------------------------------------------
+
+    if strong_buy:
+        final_signal = "🟢 강력 매수 신호"
+
+    elif buy:
+        final_signal = "🟡 매수 관심"
+
+    elif sell:
+        final_signal = "🔴 매도/익절 주의"
+
+    else:
+        final_signal = "⚪ 관망"
+
+    return df, {
+        "signal": final_signal,
+        "score": score,
+        "golden_cross": golden_cross,
+        "death_cross": death_cross,
+        "rsi": rsi,
+        "volume_ratio": volume_ratio,
+        "macd": macd,
+        "macd_signal": signal,
+        "price": safe_float(today["Close"]),
+        "ma20": safe_float(today["MA20"]),
+        "ma60": safe_float(today["MA60"]),
+        "reasons": reasons,
+        "sell_reasons": sell_reasons,
+    }
+
+
+# =========================================================
+# 차트 생성
+# =========================================================
+
+def create_chart(symbol, name, df, result):
+
+    os.makedirs(CHART_DIR, exist_ok=True)
+
+    chart_file = os.path.join(
+        CHART_DIR,
+        f"{symbol.replace('.', '_')}.png"
+    )
+
+    data = df.tail(90).copy()
+
+    fig = plt.figure(
+        figsize=(12, 8)
+    )
+
+    ax = fig.add_axes(
+        [0.08, 0.30, 0.88, 0.62]
+    )
+
+    # 가격
+    ax.plot(
+        data.index,
+        data["Close"],
+        label="Close",
+        linewidth=2
+    )
+
+    ax.plot(
+        data.index,
+        data["MA20"],
+        label="MA20",
+        linewidth=1.5
+    )
+
+    ax.plot(
+        data.index,
+        data["MA60"],
+        label="MA60",
+        linewidth=1.5
+    )
+
+    # 골든크로스 표시
+    cross_dates = []
+
+    for i in range(1, len(data)):
+
+        prev = data.iloc[i - 1]
+        cur = data.iloc[i]
+
+        if (
+            prev["MA20"] <= prev["MA60"]
+            and cur["MA20"] > cur["MA60"]
+        ):
+            cross_dates.append(
+                (data.index[i], cur["Close"])
+            )
+
+    for date, price in cross_dates:
+
+        ax.scatter(
+            date,
+            price,
+            s=100,
+            marker="^",
+            zorder=10
+        )
+
+        ax.annotate(
+            "GOLDEN CROSS",
+            (date, price),
+            xytext=(0, 15),
+            textcoords="offset points",
+            ha="center",
+            fontsize=8
+        )
+
+    # 현재가
+    current_price = result["price"]
+
+    ax.axhline(
+        current_price,
+        linestyle="--",
+        linewidth=0.8
+    )
+
+    signal_text = result["signal"]
+
+    ax.set_title(
+        f"{name} ({symbol})  |  {signal_text}",
+        fontsize=15,
+        fontweight="bold"
+    )
+
+    ax.set_ylabel("Price")
+    ax.grid(alpha=0.2)
+    ax.legend(loc="upper left")
+
+    # -----------------------------------------------------
+    # RSI
+    # -----------------------------------------------------
+
+    rsi_ax = fig.add_axes(
+        [0.08, 0.08, 0.88, 0.14]
+    )
+
+    rsi_ax.plot(
+        data.index,
+        data["RSI"],
+        linewidth=1.5
+    )
+
+    rsi_ax.axhline(
+        70,
+        linestyle="--",
+        linewidth=0.8
+    )
+
+    rsi_ax.axhline(
+        30,
+        linestyle="--",
+        linewidth=0.8
+    )
+
+    rsi_ax.axhline(
+        50,
+        linestyle=":",
+        linewidth=0.8
+    )
+
+    rsi_ax.set_ylim(0, 100)
+    rsi_ax.set_ylabel("RSI")
+    rsi_ax.grid(alpha=0.2)
+
+    # -----------------------------------------------------
+    # 정보 박스
+    # -----------------------------------------------------
+
+    info = (
+        f"Signal : {result['signal']}\n"
+        f"Score : {result['score']}/11\n"
+        f"Price : {current_price:,.0f}\n"
+        f"MA20 : {result['ma20']:,.0f}\n"
+        f"MA60 : {result['ma60']:,.0f}\n"
+        f"RSI : {result['rsi']:.1f}\n"
+        f"Volume : {result['volume_ratio']:.1f}x\n"
+        f"Golden Cross : "
+        f"{'YES' if result['golden_cross'] else 'NO'}"
+    )
+
+    fig.text(
+        0.08,
+        0.955,
+        info,
+        fontsize=9,
+        va="top",
+        family="monospace"
+    )
+
+    plt.savefig(
+        chart_file,
+        dpi=150,
+        bbox_inches="tight"
+    )
+
+    plt.close()
+
+    return chart_file
+
+
+# =========================================================
+# 국내 지수
+# =========================================================
+
+def get_safe_krx_date():
+
+    try:
+
+        now = now_kst()
+
+        today = now.strftime("%Y%m%d")
+
+        return stock.get_nearest_business_day_in_a_week(
+            today
+        )
+
+    except:
+
+        return now_kst().strftime("%Y%m%d")
+
+
+def get_kr_indices():
+
+    krx_date = get_safe_krx_date()
+
+    kospi = "집계 중"
+    kosdaq = "집계 중"
+
+    try:
+
+        k_df = stock.get_index_price_change_by_ticker(
+            krx_date,
+            krx_date,
+            "1001"
+        )
+
+        kd_df = stock.get_index_price_change_by_ticker(
+            krx_date,
+            krx_date,
+            "2001"
+        )
+
+        if not k_df.empty:
+
+            kospi = (
+                f"{k_df['종가'].iloc[0]:,.2f} "
+                f"({k_df['등락률'].iloc[0]:+.2f}%)"
+            )
+
+        if not kd_df.empty:
+
+            kosdaq = (
+                f"{kd_df['종가'].iloc[0]:,.2f} "
+                f"({kd_df['등락률'].iloc[0]:+.2f}%)"
+            )
+
+    except Exception as e:
+
+        print("지수 오류:", e)
+
+    return krx_date, kospi, kosdaq
+
+
+# =========================================================
+# 미국 지수 / 거시경제
+# =========================================================
+
+def get_us_macro():
+
+    indices = {
+        "NASDAQ": "^IXIC",
+        "S&P500": "^GSPC",
+        "DOW": "^DJI",
+    }
+
+    us_text = ""
+    us_rates = []
+
+    for name, symbol in indices.items():
+
+        try:
+
+            df = yf.Ticker(symbol).history(
+                period="5d"
+            )
+
+            if len(df) >= 2:
+
+                cur = safe_float(
+                    df["Close"].iloc[-1]
+                )
+
+                prev = safe_float(
+                    df["Close"].iloc[-2]
+                )
+
+                rate = (
+                    (cur - prev) /
+                    prev * 100
+                )
+
+                us_rates.append(rate)
+
+                us_text += (
+                    f"- {name}: "
+                    f"{cur:,.2f} "
+                    f"({rate:+.2f}%)\n"
+                )
+
+        except:
+
+            us_text += (
+                f"- {name}: 집계 중\n"
+            )
+
+    macro = {}
+
+    symbols = {
+        "환율": "USDKRW=X",
+        "유가": "CL=F",
+        "국채10년": "^TNX",
+        "VIX": "^VIX",
+    }
+
+    for name, symbol in symbols.items():
+
+        try:
+
+            df = yf.Ticker(symbol).history(
+                period="5d"
+            )
+
+            if not df.empty:
+
+                macro[name] = (
+                    f"{safe_float(df['Close'].iloc[-1]):,.2f}"
+                )
+
+            else:
+
+                macro[name] = "N/A"
+
+        except:
+
+            macro[name] = "N/A"
+
+    return us_text, macro, us_rates
+
+
+# =========================================================
+# 시장 거래대금 TOP 5
+# =========================================================
+
+def get_top_kr_stocks():
+
+    krx_date = get_safe_krx_date()
 
     result = []
 
     try:
 
-        if (
-            market_df is None
-            or market_df.empty
-        ):
+        df = stock.get_market_trading_value_by_ticker(
+            krx_date,
+            krx_date,
+            "ALL"
+        )
 
-            market_df = get_all_market_data(
-                date
-            )
-
-        if market_df.empty:
+        if df is None or df.empty:
             return result
 
-        value_col = None
-
-        for col in [
-            "거래대금",
-            "거래대금합계"
-        ]:
-
-            if col in market_df.columns:
-                value_col = col
-                break
-
-        if value_col is None:
-            return result
-
-        df = market_df.sort_values(
-            value_col,
+        df = df.sort_values(
+            by="거래대금",
             ascending=False
-        ).head(10)
+        ).head(5)
 
         for ticker, row in df.iterrows():
 
@@ -625,595 +1000,422 @@ def get_domestic_top10(
                 ticker
             )
 
+            try:
+
+                ohlcv = stock.get_market_ohlcv_by_date(
+                    krx_date,
+                    krx_date,
+                    ticker
+                )
+
+                if not ohlcv.empty:
+
+                    price = safe_float(
+                        ohlcv["종가"].iloc[0]
+                    )
+
+                    change = safe_float(
+                        ohlcv["등락률"].iloc[0]
+                    )
+
+                else:
+
+                    price = 0
+                    change = 0
+
+            except:
+
+                price = 0
+                change = 0
+
             result.append({
                 "ticker": ticker,
                 "name": name,
-                "price": safe_float(
-                    row.get("종가")
-                ),
-                "rate": safe_float(
-                    row.get("등락률")
-                ),
-                "volume": safe_float(
-                    row.get("거래량")
-                ),
-                "value": safe_float(
-                    row.get(value_col)
-                ),
-                "market": row.get(
-                    "시장",
-                    ""
-                )
+                "price": price,
+                "change": change,
             })
 
     except Exception as e:
 
-        print(
-            "[TOP10 ERROR]",
-            e
-        )
+        print("거래대금 TOP 오류:", e)
 
     return result
 
 
-# ============================================================
-# 12. 상승/하락 TOP
-# ============================================================
+# =========================================================
+# 관심종목 전체 분석
+# =========================================================
 
-def get_market_rankings(
-    market_df
-):
+def analyze_watchlist():
 
-    result = {
-        "rising": [],
-        "falling": []
-    }
+    all_stocks = {}
 
-    if (
-        market_df is None
-        or market_df.empty
+    all_stocks.update(KR_STOCKS)
+    all_stocks.update(US_STOCKS)
+
+    results = []
+
+    for symbol, name in all_stocks.items():
+
+        print("분석:", name, symbol)
+
+        df = get_stock_data(symbol)
+
+        if df is None:
+            continue
+
+        df, result = analyze_signal(df)
+
+        result["symbol"] = symbol
+        result["name"] = name
+        result["df"] = df
+
+        results.append(result)
+
+    return results
+
+
+# =========================================================
+# 실시간 리포트
+# =========================================================
+
+def generate_analyst_briefings(results):
+
+    now = now_kst()
+
+    today = now.strftime(
+        "%Y-%m-%d %H:%M"
+    )
+
+    hour = now.hour
+
+    if hour < 9:
+        label = "장시작 브리핑"
+
+    elif hour < 13:
+        label = "오전 장중 브리핑"
+
+    elif hour < 17:
+        label = "오후 마감 브리핑"
+
+    else:
+        label = "저녁 야간 브리핑"
+
+    krx_date, kospi, kosdaq = get_kr_indices()
+
+    us_text, macro, us_rates = get_us_macro()
+
+    top_stocks = get_top_kr_stocks()
+
+    top_text = ""
+
+    for i, item in enumerate(
+        top_stocks,
+        1
     ):
-        return result
 
-    if "등락률" not in market_df.columns:
-        return result
+        top_text += (
+            f"{i}. {item['name']} "
+            f"{item['price']:,.0f}원 "
+            f"({item['change']:+.2f}%)\n"
+        )
+
+    # 강한 신호
+    strong = [
+        x for x in results
+        if x["signal"] == "🟢 강력 매수 신호"
+    ]
+
+    buy = [
+        x for x in results
+        if x["signal"] == "🟡 매수 관심"
+    ]
+
+    sell = [
+        x for x in results
+        if x["signal"] == "🔴 매도/익절 주의"
+    ]
+
+    strong_text = ""
+
+    for x in strong[:10]:
+
+        strong_text += (
+            f"🟢 {x['name']} "
+            f"{x['price']:,.0f} "
+            f"[점수 {x['score']}/11]\n"
+        )
+
+    if not strong_text:
+        strong_text = "현재 강력 매수 조건 충족 종목 없음\n"
+
+    buy_text = ""
+
+    for x in buy[:10]:
+
+        buy_text += (
+            f"🟡 {x['name']} "
+            f"{x['price']:,.0f} "
+            f"[점수 {x['score']}/11]\n"
+        )
+
+    if not buy_text:
+        buy_text = "현재 매수 관심 종목 없음\n"
+
+    sell_text = ""
+
+    for x in sell[:10]:
+
+        sell_text += (
+            f"🔴 {x['name']} "
+            f"{x['price']:,.0f}\n"
+        )
+
+    if not sell_text:
+        sell_text = "현재 매도/익절 주의 종목 없음\n"
+
+    # 시장 분위기
+    kospi_rate = 0
 
     try:
 
-        rising = market_df.sort_values(
-            "등락률",
-            ascending=False
-        ).head(10)
+        if "(" in kospi:
+            kospi_rate = float(
+                kospi.split("(")[1]
+                .replace("%)", "")
+            )
 
-        falling = market_df.sort_values(
-            "등락률",
-            ascending=True
-        ).head(10)
+    except:
+        pass
 
-        for ticker, row in rising.iterrows():
+    if (
+        kospi_rate <= -1
+        or (
+            us_rates
+            and min(us_rates) <= -1.5
+        )
+    ):
 
-            try:
+        mood = "변동성 확대 / 하방 압력"
 
-                result["rising"].append({
-                    "name":
-                        stock.get_market_ticker_name(
-                            ticker
-                        ),
-                    "rate":
-                        safe_float(
-                            row.get("등락률")
-                        )
-                })
+    elif (
+        kospi_rate >= 1
+        or (
+            us_rates
+            and max(us_rates) >= 1.5
+        )
+    ):
 
-            except Exception:
-                pass
+        mood = "상승 모멘텀 강화"
 
-        for ticker, row in falling.iterrows():
+    else:
 
-            try:
+        mood = "혼조 / 종목별 차별화"
 
-                result["falling"].append({
-                    "name":
-                        stock.get_market_ticker_name(
-                            ticker
-                        ),
-                    "rate":
-                        safe_float(
-                            row.get("등락률")
-                        )
-                })
+    part1 = f"""
+📅 {today}
+📊 실시간 주식시장 브리핑
+[{label}]
+━━━━━━━━━━━━━━
 
-            except Exception:
-                pass
+🌍 시장 진단
+시장 분위기: {mood}
 
-    except Exception as e:
+🇰🇷 국내시장
+KOSPI : {kospi}
+KOSDAQ : {kosdaq}
+
+🔥 거래대금 TOP 5
+{top_text.strip()}
+"""
+
+    part2 = f"""
+📊 글로벌 시장
+━━━━━━━━━━━━━━
+
+🇺🇸 미국 주요지수
+
+{us_text.strip()}
+
+🌎 거시지표
+
+환율 : {macro.get('환율','N/A')}
+WTI : {macro.get('유가','N/A')}
+미국채10Y : {macro.get('국채10년','N/A')}
+VIX : {macro.get('VIX','N/A')}
+"""
+
+    part3 = f"""
+🎯 기술적 신호 분석
+━━━━━━━━━━━━━━
+
+🟢 강력 매수 신호
+
+{strong_text.strip()}
+
+🟡 매수 관심
+
+{buy_text.strip()}
+
+🔴 매도/익절 주의
+
+{sell_text.strip()}
+
+📌 신호 기준
+• MA20/MA60 골든크로스
+• MA5 > MA20 > MA60
+• 현재가와 이동평균선 위치
+• 거래량 증가
+• RSI
+• MACD
+
+※ 기술적 조건에 따른 자동 분류이며
+투자 결과를 보장하는 신호는 아닙니다.
+"""
+
+    return part1, part2, part3
+
+
+# =========================================================
+# 차트 생성 + 카카오 전송
+# =========================================================
+
+def send_signal_charts(results):
+
+    # 강력 매수 → 매수 관심 → 매도 주의 순
+    selected = []
+
+    selected += [
+        x for x in results
+        if x["signal"] == "🟢 강력 매수 신호"
+    ]
+
+    selected += [
+        x for x in results
+        if x["signal"] == "🟡 매수 관심"
+    ]
+
+    selected += [
+        x for x in results
+        if x["signal"] == "🔴 매도/익절 주의"
+    ]
+
+    # 카카오 메시지 폭주 방지
+    selected = selected[:10]
+
+    if not selected:
+
+        send_kakao_text(
+            "📊 기술적 신호 종목 없음\n"
+            "현재 골든크로스·매수 조건을 "
+            "충족하는 관심종목이 없습니다."
+        )
+
+        return
+
+    for x in selected:
 
         print(
-            "[RANKING ERROR]",
-            e
+            "차트 생성:",
+            x["name"],
+            x["signal"]
         )
 
-    return result
-
-
-# ============================================================
-# 13. 섹터 분석
-# ============================================================
-
-def analyze_sector(
-    sector_name,
-    names,
-    date,
-    ticker_map,
-    market_df
-):
-
-    rows = []
-
-    for name in names:
-
-        ticker = ticker_map.get(
-            name
+        chart_file = create_chart(
+            x["symbol"],
+            x["name"],
+            x["df"],
+            x
         )
 
-        if not ticker:
-            continue
-
-        try:
-
-            if ticker not in market_df.index:
-                continue
-
-            row = market_df.loc[ticker]
-
-            rows.append({
-                "name": name,
-                "ticker": ticker,
-                "price": safe_float(
-                    row.get("종가")
-                ),
-                "rate": safe_float(
-                    row.get("등락률")
-                ),
-                "volume": safe_float(
-                    row.get("거래량")
-                ),
-                "value": safe_float(
-                    row.get("거래대금")
-                )
-            })
-
-        except Exception:
-            continue
-
-    if not rows:
-
-        return {
-            "name": sector_name,
-            "count": 0,
-            "avg_rate": np.nan,
-            "total_value": np.nan,
-            "rising": 0,
-            "falling": 0,
-            "leader": None,
-            "strength": 0
-        }
-
-    df = pd.DataFrame(rows)
-
-    avg_rate = safe_float(
-        df["rate"].mean()
-    )
-
-    total_value = safe_float(
-        df["value"].sum()
-    )
-
-    rising = int(
-        (df["rate"] > 0).sum()
-    )
-
-    falling = int(
-        (df["rate"] < 0).sum()
-    )
-
-    leader_row = df.sort_values(
-        "value",
-        ascending=False
-    ).iloc[0]
-
-    strength = 0
-
-    if avg_rate >= 2:
-        strength += 4
-
-    elif avg_rate >= 1:
-        strength += 3
-
-    elif avg_rate > 0:
-        strength += 2
-
-    elif avg_rate <= -2:
-        strength -= 4
-
-    elif avg_rate < 0:
-        strength -= 2
-
-    if rising > falling:
-        strength += 2
-
-    elif falling > rising:
-        strength -= 2
-
-    return {
-        "name": sector_name,
-        "count": len(df),
-        "avg_rate": avg_rate,
-        "total_value": total_value,
-        "rising": rising,
-        "falling": falling,
-        "leader": leader_row.to_dict(),
-        "strength": strength,
-    }
-
-
-def get_sector_analysis(
-    date,
-    ticker_map,
-    market_df
-):
-
-    result = []
-
-    for sector_name, names in SECTORS.items():
-
-        result.append(
-            analyze_sector(
-                sector_name,
-                names,
-                date,
-                ticker_map,
-                market_df
-            )
+        remote_name = (
+            f"charts/"
+            f"{x['symbol'].replace('.', '_')}.png"
         )
 
-    result.sort(
-        key=lambda x: (
-            x["strength"],
-            safe_float(
-                x["avg_rate"],
-                -999
-            )
-        ),
-        reverse=True
-    )
+        image_url = upload_chart_to_github(
+            chart_file,
+            remote_name
+        )
 
-    return result
-
-
-# ============================================================
-# 14. Yahoo Finance
-# ============================================================
-
-def yahoo_history(
-    symbol,
-    period="6mo"
-):
-
-    for attempt in range(3):
-
-        try:
-
-            df = yf.Ticker(
-                symbol
-            ).history(
-                period=period,
-                interval="1d",
-                auto_adjust=False
-            )
-
-            if (
-                df is not None
-                and not df.empty
-            ):
-                return df
-
-        except Exception as e:
+        if not image_url:
 
             print(
-                f"[YAHOO {symbol}] "
-                f"{attempt + 1}/3:",
-                e
+                "❌ 이미지 URL 생성 실패:",
+                x["name"]
             )
+
+            continue
+
+        reasons = x["reasons"]
+
+        description = (
+            f"{x['signal']}\n"
+            f"점수: {x['score']}/11\n"
+            f"RSI: {x['rsi']:.1f}\n"
+            f"거래량: {x['volume_ratio']:.1f}배\n"
+            f"골든크로스: "
+            f"{'발생' if x['golden_cross'] else '없음'}"
+        )
+
+        send_kakao_image(
+            image_url,
+            f"📈 {x['name']} 기술적 분석",
+            description
+        )
 
         time.sleep(1)
 
-    return pd.DataFrame()
 
+# =========================================================
+# MAIN JOB
+# =========================================================
 
-# ============================================================
-# 15. 기술적 분석
-# ============================================================
+def job():
 
-def technical_analysis(
-    symbol
-):
+    print("=" * 60)
+    print(
+        f"[{now_kst()}] "
+        f"주식 AI 브리핑 시작"
+    )
+    print("=" * 60)
 
-    df = yahoo_history(
-        symbol,
-        "6mo"
+    # -----------------------------------------------------
+    # 1. 관심종목 분석
+    # -----------------------------------------------------
+
+    results = analyze_watchlist()
+
+    print(
+        f"총 {len(results)}개 종목 분석 완료"
     )
 
-    if (
-        df is None
-        or df.empty
-        or len(df) < 60
-    ):
-        return None
+    # -----------------------------------------------------
+    # 2. 문자 브리핑
+    # -----------------------------------------------------
 
-    try:
+    p1, p2, p3 = generate_analyst_briefings(
+        results
+    )
 
-        close = pd.to_numeric(
-            df["Close"],
-            errors="coerce"
-        ).dropna()
+    send_kakao_text(p1)
+    time.sleep(1)
 
-        volume = pd.to_numeric(
-            df["Volume"],
-            errors="coerce"
-        ).fillna(0)
+    send_kakao_text(p2)
+    time.sleep(1)
 
-        sma5 = close.rolling(
-            5
-        ).mean()
+    send_kakao_text(p3)
 
-        sma20 = close.rolling(
-            20
-        ).mean()
+    # -----------------------------------------------------
+    # 3. 차트 이미지
+    # -----------------------------------------------------
 
-        sma60 = close.rolling(
-            60
-        ).mean()
+    send_signal_charts(results)
 
-        ema12 = close.ewm(
-            span=12,
-            adjust=False
-        ).mean()
+    print("=" * 60)
+    print("✅ 전체 브리핑 완료")
+    print("=" * 60)
 
-        ema26 = close.ewm(
-            span=26,
-            adjust=False
-        ).mean()
 
-        macd = ema12 - ema26
-
-        signal = macd.ewm(
-            span=9,
-            adjust=False
-        ).mean()
-
-        delta = close.diff()
-
-        gain = delta.clip(
-            lower=0
-        ).rolling(14).mean()
-
-        loss = (
-            -delta.clip(
-                upper=0
-            )
-        ).rolling(14).mean()
-
-        rs = gain / loss.replace(
-            0,
-            np.nan
-        )
-
-        rsi = 100 - (
-            100 / (1 + rs)
-        )
-
-        obv_change = np.where(
-            close.diff() > 0,
-            volume,
-            np.where(
-                close.diff() < 0,
-                -volume,
-                0
-            )
-        )
-
-        obv = pd.Series(
-            obv_change,
-            index=close.index
-        ).cumsum()
-
-        current = safe_float(
-            close.iloc[-1]
-        )
-
-        previous = safe_float(
-            close.iloc[-2]
-        )
-
-        rate = (
-            (
-                current - previous
-            )
-            / previous
-            * 100
-            if previous
-            else np.nan
-        )
-
-        rsi_value = safe_float(
-            rsi.iloc[-1]
-        )
-
-        macd_value = safe_float(
-            macd.iloc[-1]
-        )
-
-        signal_value = safe_float(
-            signal.iloc[-1]
-        )
-
-        s5 = safe_float(
-            sma5.iloc[-1]
-        )
-
-        s20 = safe_float(
-            sma20.iloc[-1]
-        )
-
-        s60 = safe_float(
-            sma60.iloc[-1]
-        )
-
-        golden_cross = False
-
-        if len(sma20.dropna()) >= 2:
-
-            prev5 = safe_float(
-                sma5.iloc[-2]
-            )
-
-            prev20 = safe_float(
-                sma20.iloc[-2]
-            )
-
-            if (
-                not pd.isna(prev5)
-                and not pd.isna(prev20)
-                and not pd.isna(s5)
-                and not pd.isna(s20)
-                and prev5 <= prev20
-                and s5 > s20
-            ):
-                golden_cross = True
-
-        if (
-            current > s5
-            and s5 > s20
-            and s20 > s60
-        ):
-
-            trend = "강한 상승"
-
-        elif (
-            current > s20
-            and s20 >= s60
-        ):
-
-            trend = "상승"
-
-        elif current >= s60:
-
-            trend = "중립"
-
-        else:
-
-            trend = "조정·약세"
-
-        if pd.isna(rsi_value):
-
-            rsi_state = "미집계"
-
-        elif rsi_value >= 70:
-
-            rsi_state = "과열"
-
-        elif rsi_value >= 55:
-
-            rsi_state = "상승 우위"
-
-        elif rsi_value > 45:
-
-            rsi_state = "중립"
-
-        elif rsi_value > 30:
-
-            rsi_state = "약세"
-
-        else:
-
-            rsi_state = "과매도"
-
-        macd_state = (
-            "상승"
-            if (
-                not pd.isna(macd_value)
-                and not pd.isna(signal_value)
-                and macd_value > signal_value
-            )
-            else "하락"
-        )
-
-        obv_state = (
-            "증가"
-            if (
-                len(obv) >= 5
-                and obv.iloc[-1]
-                > obv.iloc[-5]
-            )
-            else "감소"
-        )
-
-        score = 0
-
-        if golden_cross:
-            score += 3
-
-        if (
-            not pd.isna(rsi_value)
-            and 50 <= rsi_value < 70
-        ):
-            score += 2
-
-        if macd_state == "상승":
-            score += 2
-
-        if obv_state == "증가":
-            score += 2
-
-        if trend in [
-            "상승",
-            "강한 상승"
-        ]:
-            score += 2
-
-        return {
-            "price": current,
-            "rate": rate,
-            "sma5": s5,
-            "sma20": s20,
-            "sma60": s60,
-            "rsi": rsi_value,
-            "rsi_state": rsi_state,
-            "macd": macd_value,
-            "signal": signal_value,
-            "macd_state": macd_state,
-            "obv_state": obv_state,
-            "golden_cross": golden_cross,
-            "trend": trend,
-            "score": score
-        }
-
-    except Exception as e:
-
-        print(
-            f"[TECH ERROR] {symbol}:",
-            e
-        )
-
-        return None
-
-
-def get_watchlist_analysis():
-
-    korea = []
-    usa = []
-
-    for name, symbol in KOREA_WATCHLIST.items():
-
-        data = technical_analysis(symbol)
+if __name__ == "__main__":
+    job()
