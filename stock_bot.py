@@ -1157,6 +1157,7 @@ def build_briefing():
     KST = ZoneInfo("Asia/Seoul")
     now = datetime.now(KST)
     HOUR = now.hour
+    TODAY = now.strftime('%Y-%m-%d')
 
     if HOUR < 9:
 
