@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -1150,6 +1151,62 @@ def build_briefing():
     macro = get_macro()
 
     vix = macro.get("VIX")
+    import pandas as pd
+import numpy as np
+
+def analyze_technical_indicators(df):
+    """
+    주가 데이터프레임(단일 종목의 OHLCV)을 받아 
+    이동평균선, RSI, 볼린저 밴드를 계산하고 매수 신호를 판단하는 함수
+    """
+    # 데이터가 부족한 경우 예외 처리
+    if df is None or len(df) < 30:
+        return None
+
+    # 1. 이동평균선 (단기: 5일, 장기: 20일)
+    df['MA5'] = df['Close'].rolling(window=5).mean()
+    df['MA20'] = df['Close'].rolling(window=20).mean()
+
+    # 2. 볼린저 밴드 (20일 기준, 2배 표준편차)
+    df['Std'] = df['Close'].rolling(window=20).std()
+    df['Upper'] = df['MA20'] + (df['Std'] * 2)
+    df['Lower'] = df['MA20'] - (df['Std'] * 2)
+
+    # 3. RSI (14일 기준)
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI'] = 100 - (100 / (1 + rs))
+
+    # 최신일 데이터 기준 판단
+    latest = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    # 조건 판단 예시
+    # - 골든크로스 (전일 MA5 <= MA20 이고 오늘 MA5 > MA20)
+    is_golden_cross = (prev['MA5'] <= prev['MA20']) and (latest['MA5'] > latest['MA20'])
+    
+    # - RSI 과매도 구간 탈출 또는 적정 구간 (예: RSI 30 ~ 45)
+    is_rsi_good = 30 <= latest['RSI'] <= 45
+
+    # - 볼린저 밴드 하단 터치 후 반등 (종가가 하단 밴드 근처이거나 돌파)
+    is_bollinger_bounce = latest['Close'] <= latest['Lower'] * 1.02
+
+    # 종합 매수 시그널 점수화 또는 플래그 설정
+    signal_score = 0
+    if is_golden_cross: signal_score += 1
+    if is_rsi_good: signal_score += 1
+    if is_bollinger_bounce: signal_score += 1
+
+    return {
+        "Close": latest['Close'],
+        "RSI": round(latest['RSI'], 2),
+        "GoldenCross": is_golden_cross,
+        "BollingerBounce": is_bollinger_bounce,
+        "Score": signal_score
+    }
+
 
     # ========================================================
     # 시간대별 제목
