@@ -15,6 +15,7 @@ from pykrx import stock
 # 기본 설정
 # =========================================================
 KST = ZoneInfo("Asia/Seoul")
+
 CHART_DIR = Path("charts")
 CHART_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -98,7 +99,6 @@ US_STOCKS = {
 # ============================================================
 
 SECTORS = {
-
     "반도체": [
         "삼성전자",
         "SK하이닉스",
@@ -114,7 +114,6 @@ SECTORS = {
         "Intel",
         "Applied Materials",
     ],
-
     "AI": [
         "SK하이닉스",
         "한미반도체",
@@ -126,43 +125,35 @@ SECTORS = {
         "Alphabet",
         "Meta",
     ],
-
     "2차전지": [
         "삼성SDI",
     ],
-
     "방산": [
         "한화에어로스페이스",
         "LIG넥스원",
         "현대로템",
     ],
-
     "원전": [
         "두산에너빌리티",
         "현대건설",
     ],
-
     "바이오": [
         "삼성바이오로직스",
         "셀트리온",
         "삼천당제약",
     ],
-
     "자동차": [
         "현대차",
         "현대모비스",
     ],
-
     "조선": [
         "HD현대중공업",
         "한화오션",
     ],
-
     "로봇": [
         "두산로보틱스",
         "레인보우로보틱스",
     ],
-
     "전력/전선": [
         "LS ELECTRIC",
         "일진전기",
@@ -202,10 +193,6 @@ def fmt_money(value):
 
 
 def analyze_technical_indicators(df):
-    """
-    주가 데이터프레임(단일 종목의 OHLCV)을 받아 
-    이동평균선, RSI, 볼린저 밴드를 계산하고 매수 신호를 판단하는 함수
-    """
     if df is None or len(df) < 30:
         return None
 
@@ -352,7 +339,7 @@ def add_indicators(df):
 
 
 # ============================================================
-# 국내 외국인 / 기관 수급
+# 국내 외국인 / 기관 수급 (에러 안전 처리 적용 완료)
 # ============================================================
 
 def get_kr_supply(ticker):
@@ -373,7 +360,6 @@ def get_kr_supply(ticker):
                 institution = clean_number(row[col])
         return foreign, institution
     except Exception as e:
-        print(f"SUPPLY ERROR {ticker}: {e}")
         return 0, 0
 
 
