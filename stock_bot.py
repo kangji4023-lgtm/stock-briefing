@@ -7,10 +7,12 @@ import pandas as pd
 import yfinance as yf
 
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from pykrx import stock
 
-KST = pytz.timezone("Asia/Seoul")
+KST = ZoneInfo("Asia/Seoul")
+
 CHART_DIR = Path("charts")
 CHART_DIR.mkdir(parents=True, exist_ok=True)
 
