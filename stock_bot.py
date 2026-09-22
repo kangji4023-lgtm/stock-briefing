@@ -1965,10 +1965,17 @@ def main():
         "AI 국내·미국 주식 브리핑 시작"
     )
 
+    KST = pytz.timezone("Asia/Seoul")
+    now = datetime.now(KST)
+
     print(
         f"한국시간: "
         f"{now.strftime('%Y-%m-%d %H:%M:%S')}"
     )
+    print(
+        "========================================"
+    )
+
 
     print(
         "========================================"
