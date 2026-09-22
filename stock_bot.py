@@ -1973,6 +1973,8 @@ def split_message(
     text,
     max_length=1800
 ):
+    if text is None:
+        return ["브리핑 내용을 생성하지 못했습니다."]
 
     messages = []
 
