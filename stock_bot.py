@@ -1154,6 +1154,9 @@ def build_briefing():
     # ========================================================
     # 시간대별 제목
     # ========================================================
+    KST = ZoneInfo("Asia/Seoul")
+    now = datetime.now(KST)
+    HOUR = now.hour
 
     if HOUR < 9:
 
