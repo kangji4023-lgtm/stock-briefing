@@ -1967,7 +1967,7 @@ def main():
 
     print(
         f"한국시간: "
-        f"{NOW.strftime('%Y-%m-%d %H:%M:%S')}"
+        f"{now.strftime('%Y-%m-%d %H:%M:%S')}"
     )
 
     print(
