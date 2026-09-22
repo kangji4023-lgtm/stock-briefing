@@ -1,16 +1,18 @@
 import os
-import time
 import json
-import requests
-import numpy as np
-import pandas as pd
-import yfinance as yf
-
-from datetime import datetime
+import time
 from pathlib import Path
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+
+import pandas as pd
+import requests
+import yfinance as yf
 from pykrx import stock
 
+# =========================================================
+# 기본 설정
+# =========================================================
 KST = ZoneInfo("Asia/Seoul")
 
 CHART_DIR = Path("charts")
