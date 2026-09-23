@@ -1,9 +1,10 @@
 import os
 import json
 import time
+import re  # 이 부분이 반드시 있어야 합니다!
 import numpy as np
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
