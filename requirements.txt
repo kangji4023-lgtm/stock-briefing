@@ -1,0 +1,9 @@
+requests
+feedparser
+numpy
+pandas
+yfinance
+beautifulsoup4
+lxml
+html5lib
+pykrx
