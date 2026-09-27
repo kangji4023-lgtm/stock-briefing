@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pykrx==1.2.8 pandas numpy yfinance requests pytz
+          pip install feedparser requests numpy pandas yfinance beautifulsoup4 lxml html5lib pykrx==1.2.8
 
       # 4. 주식 브리핑 실행
       - name: Run Stock Bot
