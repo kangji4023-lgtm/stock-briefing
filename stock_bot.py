@@ -44,6 +44,11 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
 # 없으면 Google News RSS를 보조 사용
 # ------------------------------------------------------------
 
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
+
+
+
 # ============================================================
 # 분석 종목
 # ============================================================
@@ -106,7 +111,7 @@ HOLDINGS = [
 
 
 # ============================================================
-# 공통 함수 (환율 및 기업 정보 포함)
+# 공통 함수 (환율, 번역, 기업 정보)
 # ============================================================
 
 def get_exchange_rate():
@@ -117,16 +122,41 @@ def get_exchange_rate():
             return float(hist['Close'].iloc[-1])
     except:
         pass
-    return 1350.0  # 환율 조회 실패 시 기본값
+    return 1350.0
+
+
+def translate_to_korean(text):
+    if not text:
+        return ""
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            "client": "gtx",
+            "sl": "en",
+            "tl": "ko",
+            "dt": "t",
+            "q": text
+        }
+        response = requests.get(url, params=params, timeout=5)
+        if response.status_code == 200:
+            res_data = response.json()
+            translated_text = "".join([item[0] for item in res_data[0] if item[0]])
+            return translated_text
+    except Exception as e:
+        print("번역 오류:", e)
+    return text
 
 
 def get_business_summary(ticker_symbol):
     try:
         t = yf.Ticker(ticker_symbol)
         info = t.info
-        return info.get("longBusinessSummary", "")
+        summary = info.get("longBusinessSummary", "")
+        if summary:
+            return translate_to_korean(summary)
     except:
-        return ""
+        pass
+    return ""
 
 
 def clean_text(text):
@@ -305,7 +335,7 @@ def analyze_technical(ind):
 
 
 # ============================================================
-# 뉴스 수집 및 분석
+# 뉴스 수집 및 분석 (기간 조건 3일로 확대)
 # ============================================================
 
 def get_naver_news(query, display=5):
@@ -370,7 +400,8 @@ def is_recent_news(date_text):
     try:
         parsed = pd.to_datetime(date_text, utc=True)
         local_date = parsed.tz_convert(KST).date()
-        return local_date >= TODAY - timedelta(days=1)
+        # 주말 및 뉴스 공백 고려하여 최근 3일 이내 기사까지 수집
+        return local_date >= TODAY - timedelta(days=3)
     except Exception:
         return True
 
@@ -394,7 +425,7 @@ NEGATIVE_WORDS = ["감소", "하향", "부진", "적자", "규제", "우려", "�
 
 def analyze_news_impact(news):
     if not news:
-        return "최근 1일 내 확인된 주요 뉴스가 충분하지 않아 뉴스 영향은 판단하지 않음."
+        return "최근 확인된 주요 뉴스가 충분하지 않아 뉴스 영향은 판단하지 않음."
     positive = 0
     negative = 0
     for item in news:
@@ -472,7 +503,7 @@ def analyze_us_stock(name, ticker):
 
 
 # ============================================================
-# 리포트 포맷팅 함수 (날짜, 가격, 이모지, 기업 설명 반영)
+# 리포트 포맷팅 함수
 # ============================================================
 
 def make_stock_brief(item):
