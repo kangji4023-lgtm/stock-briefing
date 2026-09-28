@@ -23,7 +23,6 @@ KST = ZoneInfo("Asia/Seoul")
 
 TODAY = datetime.now(KST).date()
 NOW = datetime.now(KST)
-
 # ------------------------------------------------------------
 # 카카오톡
 # GitHub Secrets에 저장
@@ -38,10 +37,12 @@ GITHUB_BRANCH = os.getenv("GITHUB_REF_NAME", "main").strip() or "main"
 
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
-# 네이버 뉴스 API (선택사항)
-NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
-NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
-
+# ------------------------------------------------------------
+# 네이버 뉴스 API
+#
+# 선택사항
+# 없으면 Google News RSS를 보조 사용
+# ------------------------------------------------------------
 
 # ============================================================
 # 분석 종목
@@ -105,8 +106,28 @@ HOLDINGS = [
 
 
 # ============================================================
-# 공통 함수
+# 공통 함수 (환율 및 기업 정보 포함)
 # ============================================================
+
+def get_exchange_rate():
+    try:
+        ticker = yf.Ticker("USDKRW=X")
+        hist = ticker.history(period="1d")
+        if not hist.empty:
+            return float(hist['Close'].iloc[-1])
+    except:
+        pass
+    return 1350.0  # 환율 조회 실패 시 기본값
+
+
+def get_business_summary(ticker_symbol):
+    try:
+        t = yf.Ticker(ticker_symbol)
+        info = t.info
+        return info.get("longBusinessSummary", "")
+    except:
+        return ""
+
 
 def clean_text(text):
     if not text:
@@ -144,7 +165,7 @@ def pct(value):
 
 
 # ============================================================
-# Yahoo Finance 데이터 수집 (국내/미국 통합)
+# Yahoo Finance 데이터 수집
 # ============================================================
 
 def get_yahoo_data(ticker):
@@ -231,9 +252,6 @@ def calculate_indicators(df):
     obv = (direction * volume).fillna(0).cumsum()
     result["obv"] = safe_float(obv.iloc[-1])
 
-    if len(obv) >= 20:
-        result["obv_20ago"] = safe_float(obv.iloc[-20])
-
     result["return_1d"] = safe_float((close.iloc[-1] / close.iloc[-2] - 1) * 100)
 
     if len(close) >= 5:
@@ -282,14 +300,6 @@ def analyze_technical(ind):
             reasons.append("거래량 증가")
         elif volume_ratio < 0.7:
             reasons.append("거래량 감소")
-
-    macd = ind.get("macd")
-    signal = ind.get("signal")
-    if macd is not None and signal is not None:
-        if macd > signal:
-            reasons.append("MACD 매수 우위")
-        else:
-            reasons.append("MACD 약세")
 
     return ", ".join(reasons)
 
@@ -420,6 +430,7 @@ def analyze_korean_stock(name, code):
 
     ind = calculate_indicators(df)
     price = safe_float(df["Close"].iloc[-1]) if df is not None and not df.empty else None
+    business_summary = get_business_summary(yahoo_ticker)
     news = get_news(name)
 
     return {
@@ -427,6 +438,7 @@ def analyze_korean_stock(name, code):
         "market": "KR",
         "code": code,
         "price": price,
+        "business_summary": business_summary,
         "indicators": ind,
         "news": news,
         "news_impact": analyze_news_impact(news),
@@ -438,14 +450,20 @@ def analyze_us_stock(name, ticker):
     print("분석:", name)
     df = get_yahoo_data(ticker)
     ind = calculate_indicators(df)
-    price = safe_float(df["Close"].iloc[-1]) if df is not None and not df.empty else None
+    price_usd = safe_float(df["Close"].iloc[-1]) if df is not None and not df.empty else None
+    
+    exchange_rate = get_exchange_rate()
+    price_krw = price_usd * exchange_rate if price_usd else None
+    business_summary = get_business_summary(ticker)
     news = get_news(name)
 
     return {
         "name": name,
         "market": "US",
         "ticker": ticker,
-        "price": price,
+        "price": price_usd,
+        "price_krw": price_krw,
+        "business_summary": business_summary,
         "indicators": ind,
         "news": news,
         "news_impact": analyze_news_impact(news),
@@ -454,19 +472,24 @@ def analyze_us_stock(name, ticker):
 
 
 # ============================================================
-# 리포트 포맷팅 함수
+# 리포트 포맷팅 함수 (날짜, 가격, 이모지, 기업 설명 반영)
 # ============================================================
 
 def make_stock_brief(item):
     name = item["name"]
     ind = item["indicators"]
     
+    ret_1d = ind.get("return_1d")
+    emoji = "📈" if (ret_1d is not None and ret_1d > 0) else ("📉" if (ret_1d is not None and ret_1d < 0) else "➖")
+    
     if item["market"] == "KR":
         price_text = fmt_price(item["price"], "KRW")
     else:
-        price_text = fmt_price(item["price"], "USD")
+        price_usd_text = fmt_price(item["price"], "USD")
+        price_krw_text = fmt_price(item.get("price_krw"), "KRW")
+        price_text = f"{price_usd_text} (환화: {price_krw_text})"
 
-    r1 = pct(ind.get("return_1d"))
+    r1 = pct(ret_1d)
     r5 = pct(ind.get("return_5d"))
     r20 = pct(ind.get("return_20d"))
     rsi = ind.get("rsi")
@@ -476,10 +499,15 @@ def make_stock_brief(item):
     golden = "발생" if ind.get("golden_cross") else "없음"
     news = item["news"]
 
+    summary = item.get("business_summary", "")
+    summary_text = summary[:120] + "..." if len(summary) > 120 else (summary or "정보 없음")
+
     lines = [
-        f"📌 {name}",
-        f"가격: {price_text}",
-        f"등락: 1일 {r1} / 5일 {r5} / 20일 {r20}",
+        f"📅 날짜: {TODAY.strftime('%Y-%m-%d')}",
+        f"📌 종목: {name}",
+        f"💵 가격: {emoji} {price_text}",
+        f"📊 등락: 1일 {r1} / 5일 {r5} / 20일 {r20}",
+        f"🏢 주요 사업: {summary_text}",
         f"추세: {ind.get('trend', '데이터 없음')}",
         f"RSI: {rsi_text} | 거래량: {volume_text}",
         f"골든크로스: {golden}",
