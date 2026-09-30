@@ -156,16 +156,13 @@ def get_business_summary(ticker_symbol):
         info = t.info
         summary = info.get("longBusinessSummary", "")
         
-        # 만약 야후 파이낸스 info에 없거나 비어있으면 대체 설명 제공
         if not summary:
             return "제공되는 주요 사업 정보가 없습니다."
             
-        translated = translate_to_korean(summary)
-        return translated
+        return translate_to_korean(summary)
     except Exception as e:
         print("Business summary error:", e)
         return "주요 사업 정보를 불러오지 못했습니다."
-
 
 def get_business_summary(ticker_symbol):
     try:
