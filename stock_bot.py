@@ -10,7 +10,6 @@ import numpy as np
 import yfinance as yf
 import feedparser
 import json
-
 # ============================================================
 # 기본 설정 및 날짜
 # ============================================================
@@ -27,8 +26,6 @@ KAKAO_CLIENT_SECRET = ""
 # 네이버 뉴스 API (선택사항)
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
-
-
 # ============================================================
 # 분석 종목
 # ============================================================
