@@ -12,7 +12,6 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from urllib.parse import quote
-from pykrx import stock
 
 # ============================================================
 # 기본 설정
