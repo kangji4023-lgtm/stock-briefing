@@ -45,23 +45,6 @@ NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
 
-import os
-import re
-import time
-import html
-import requests
-import json
-import feedparser
-import numpy as np
-import pandas as pd
-import yfinance as yf
-
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-from urllib.parse import quote
-from pykrx import stock
-
-
 
 # ============================================================
 # 분석 종목
