@@ -1,15 +1,9 @@
-name: Stock Market Briefing (Safe)
+name: 주식 시장 브리핑 (안전)
 
 on:
   schedule:
-    # 한국시간 기준 (UTC + 9)
-    # 서버 부하를 피하기 위해 분 단위를 정각(00분)에서 변경했습니다.
-    - cron: "07 22 * * *"  # 한국시간 07:07
-    - cron: "07 02 * * *"  # 한국시간 11:07
-    - cron: "07 07 * * *"  # 한국시간 16:07
-    - cron: "07 10 * * *"  # 한국시간 19:07
-
-  workflow_dispatch:
+    - cron: '30 22 * * 0-4' # 예시 스케줄 (필요에 따라 조정 가능)
+  workflow_dispatch: # <-- 수동 실행(전송)을 위한 트리거 추가
 
 jobs:
   stock-briefing:
@@ -31,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser requests numpy pandas yfinance beautifulsoup4 lxml html5lib pykrx==1.2.8
+          pip install feedparser requests numpy
 
       # 4. 주식 브리핑 실행
       - name: Run Stock Bot
