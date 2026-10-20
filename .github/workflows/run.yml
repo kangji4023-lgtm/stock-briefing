@@ -1,4 +1,4 @@
-Name: Stock Market Briefing (Safe)
+name: Stock Market Briefing (Safe)
 
 on:
   schedule:
