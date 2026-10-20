@@ -26,7 +26,7 @@ NOW = datetime.now(KST)
 # GitHub Secrets에 저장
 # ------------------------------------------------------------
 KAKAO_REST_API_KEY = os.getenv("KAKAO_REST_API_KEY", "2e2432752d3bcaaf637aa44cfb75a555").strip()
-KAKAO_REFRESH_TOKEN = os.getenv("KAKAO_REFRESH_TOKEN", "M9NhxMubg3Xm1qFrO2dyq0IkO69xtbI0AAAAAgoNIFoAAAGgnv2Bdaj01SImjvGc").strip()
+KAKAO_REFRESH_TOKEN = os.getenv("KAKAO_REFRESH_TOKEN", "6XVEe9Rjh3XEkuHFyncA-nadDYKRH-6yAAAAAgoXFp8AAAGhV0XRD6j01SImjvGc").strip()
 KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET", "2e2432752d3bcaaf637aa44cfb75a555").strip()
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
